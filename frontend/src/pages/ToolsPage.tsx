@@ -46,7 +46,6 @@ const toolCategories: ToolCategory[] = [
 const ALL_TOOL_TYPES: ToolType[] = ["control", "analytics", "response", "assurance"];
 const PRODUCT_TYPE_OPTIONS = [
   "DLP",
-  "Information Protection",
   "Encryption",
   "WAF / API Security",
   "UEM / MDM",
