@@ -98,7 +98,7 @@ export function ToolsPage({ tools, onCreateTool, onDeleteTool }: ToolsPageProps)
   const [customTag, setCustomTag] = useState("");
   const [templates, setTemplates] = useState<ToolCapabilityTemplate[] | null>(null);
   const [selectedTemplates, setSelectedTemplates] = useState<Record<number, boolean>>({});
-  const [templateEffects, setTemplateEffects] = useState<Record<number, Exclude<ControlEffect, "none">>>({});
+  const [templateEffects, setTemplateEffects] = useState<Record<number, TemplateEffect>>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isLoadingTemplates, setIsLoadingTemplates] = useState(false);
   const [templateError, setTemplateError] = useState<string | null>(null);
@@ -186,10 +186,14 @@ export function ToolsPage({ tools, onCreateTool, onDeleteTool }: ToolsPageProps)
     try {
       const selected = (templates ?? [])
         .filter((template) => selectedTemplates[template.id])
-        .map((template) => ({
-          template,
-          controlEffect: templateEffects[template.id] ?? template.default_effect,
-        }));
+        .map((template) => {
+          const effect = templateEffects[template.id] ?? template.default_effect;
+          return {
+            template,
+            // "response" templates have no active control effect — use the template default.
+            controlEffect: effect === "response" ? template.default_effect : effect,
+          };
+        });
 
       await onCreateTool(name.trim(), vendorName.trim(), category, toolTypes, toolTypeLabels, selectedTags, selected);
       resetWizard();
@@ -557,13 +561,15 @@ export function ToolsPage({ tools, onCreateTool, onDeleteTool }: ToolsPageProps)
   );
 }
 
+type TemplateEffect = Exclude<ControlEffect, "none"> | "response";
+
 interface TemplateGroupProps {
   title: string;
   templates: ToolCapabilityTemplate[];
   selectedTemplates: Record<number, boolean>;
-  templateEffects: Record<number, Exclude<ControlEffect, "none">>;
+  templateEffects: Record<number, TemplateEffect>;
   onToggle: (templateId: number) => void;
-  onChangeEffect: (templateId: number, effect: Exclude<ControlEffect, "none">) => void;
+  onChangeEffect: (templateId: number, effect: TemplateEffect) => void;
 }
 
 function TemplateGroup({
@@ -591,13 +597,15 @@ function TemplateGroup({
       ) : (
         <div className="template-list">
           {templates.map((template) => (
-            <label key={template.id} className="template-item">
+            <div key={template.id} className="template-item">
               <div className="template-item-main">
-                <input
-                  type="checkbox"
-                  checked={Boolean(selectedTemplates[template.id])}
-                  onChange={() => onToggle(template.id)}
-                />
+                <label className="template-checkbox-label">
+                  <input
+                    type="checkbox"
+                    checked={Boolean(selectedTemplates[template.id])}
+                    onChange={() => onToggle(template.id)}
+                  />
+                </label>
                 <div>
                   <strong className="capability-title">{template.capability.name}</strong>
                   <p className="muted">{template.description ?? template.capability.description}</p>
@@ -617,16 +625,17 @@ function TemplateGroup({
                   className="level-select"
                   value={templateEffects[template.id] ?? template.default_effect}
                   onChange={(event) =>
-                    onChangeEffect(template.id, event.target.value as Exclude<ControlEffect, "none">)
+                    onChangeEffect(template.id, event.target.value as TemplateEffect)
                   }
                 >
                   <option value="detect">Detect</option>
                   <option value="block">Block</option>
                   <option value="prevent">Prevent</option>
+                  <option value="response">Response</option>
                 </select>
                 <span className="count-chip">{template.default_implementation_level}</span>
               </div>
-            </label>
+            </div>
           ))}
         </div>
       )}

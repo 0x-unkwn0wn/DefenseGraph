@@ -1498,6 +1498,18 @@ button {
   padding: 10px;
   border: 1px solid var(--border);
   background: #0f151c;
+  position: relative;
+}
+
+.template-item:focus-within {
+  z-index: 10;
+}
+
+.template-checkbox-label {
+  display: flex;
+  align-items: flex-start;
+  padding-top: 2px;
+  cursor: pointer;
 }
 
 .template-item-main {
