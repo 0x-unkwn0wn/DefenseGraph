@@ -261,6 +261,35 @@ def serialize_tool(tool: Tool) -> ToolRead:
     )
 
 
+def serialize_capability_read(capability: Capability) -> CapabilityRead:
+    return CapabilityRead(
+        id=capability.id,
+        code=capability.code,
+        name=capability.name,
+        domain=capability.domain,
+        description=capability.description,
+        requires_data_sources=capability.requires_data_sources,
+        supported_by_analytics=capability.supported_by_analytics,
+        supported_by_response=capability.supported_by_response,
+        requires_configuration=capability.requires_configuration,
+        configuration_profile_type=capability.configuration_profile_type,
+        related_techniques=[
+            CapabilityTechniqueMapRead(
+                technique_id=entry.technique_id,
+                technique_code=entry.technique.code,
+                technique_name=entry.technique.name,
+                attack_url=f"https://attack.mitre.org/techniques/{entry.technique.code.replace('.', '/')}/",
+                control_effect=entry.control_effect,
+                coverage=entry.coverage,
+            )
+            for entry in sorted(
+                capability.technique_maps,
+                key=lambda item: (item.technique.code, item.control_effect),
+            )
+        ],
+    )
+
+
 def serialize_tool_capability_read(assignment: ToolCapability) -> ToolCapabilityRead:
     total_questions = (
         len(assignment.capability.assessment_template.questions)
@@ -320,7 +349,7 @@ def serialize_ranked_tool_template(
         default_implementation_level=template.default_implementation_level,
         confidence_hint=template.confidence_hint,
         description=template.description,
-        capability=CapabilityRead.model_validate(template.capability),
+        capability=serialize_capability_read(template.capability),
         matched_tags=matched_tags,
         suggestion_group=suggestion_group,
     )
@@ -378,7 +407,7 @@ def serialize_assignment_detail(tool_capability: ToolCapability) -> ToolCapabili
         else None
     )
     return ToolCapabilityDetailRead(
-        capability=CapabilityRead.model_validate(tool_capability.capability),
+        capability=serialize_capability_read(tool_capability.capability),
         assignment=ToolCapabilityRead(
             capability_id=tool_capability.capability_id,
             control_effect=tool_capability.control_effect,
@@ -461,13 +490,14 @@ def serialize_assignment_detail(tool_capability: ToolCapability) -> ToolCapabili
 
 def serialize_capability_detail(capability: Capability) -> CapabilityDetailRead:
     return CapabilityDetailRead(
-        capability=CapabilityRead.model_validate(capability),
+        capability=serialize_capability_read(capability),
         assessment_template=serialize_assessment_template(capability.assessment_template),
         related_techniques=[
             CapabilityTechniqueMapRead(
                 technique_id=entry.technique_id,
                 technique_code=entry.technique.code,
                 technique_name=entry.technique.name,
+                attack_url=f"https://attack.mitre.org/techniques/{entry.technique.code.replace('.', '/')}/",
                 control_effect=entry.control_effect,
                 coverage=entry.coverage,
             )
@@ -622,8 +652,15 @@ def delete_tool(tool_id: int, db: Session = Depends(get_db)):
 
 @app.get("/capabilities", response_model=list[CapabilityRead])
 def list_capabilities(db: Session = Depends(get_db)):
-    statement = select(Capability).order_by(Capability.domain, Capability.name)
-    return db.scalars(statement).all()
+    statement = (
+        select(Capability)
+        .options(joinedload(Capability.technique_maps).joinedload(CapabilityTechniqueMap.technique))
+        .order_by(Capability.domain, Capability.name)
+    )
+    return [
+        serialize_capability_read(capability)
+        for capability in db.execute(statement).unique().scalars().all()
+    ]
 
 
 @app.get("/capabilities/{capability_id}", response_model=CapabilityDetailRead)

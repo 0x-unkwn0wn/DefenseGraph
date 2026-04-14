@@ -393,10 +393,10 @@ class DefenseGraphConfidenceTests(unittest.TestCase):
         self.assertTrue(row["response_enabled"])
         self.assertTrue(any(action_row["tool_name"] == "XSOAR" for action_row in row["response_actions"]))
 
-    def test_curated_attack_subset_contains_exactly_thirty_four_mapped_techniques(self):
+    def test_curated_attack_subset_contains_exactly_thirty_five_mapped_techniques(self):
         seeded_codes = [technique["code"] for technique in TECHNIQUES]
-        self.assertEqual(len(seeded_codes), 34)
-        self.assertEqual(len(set(seeded_codes)), 34)
+        self.assertEqual(len(seeded_codes), 35)
+        self.assertEqual(len(set(seeded_codes)), 35)
 
         with self.session_local() as db:
             technique_codes = db.scalars(select(Technique.code).order_by(Technique.code)).all()
@@ -409,7 +409,7 @@ class DefenseGraphConfidenceTests(unittest.TestCase):
                 ).all()
             }
 
-        self.assertEqual(len(technique_codes), 34)
+        self.assertEqual(len(technique_codes), 35)
         self.assertEqual(set(technique_codes), set(seeded_codes))
         self.assertEqual(mapped_codes, set(seeded_codes))
         self.assertEqual(
@@ -417,7 +417,7 @@ class DefenseGraphConfidenceTests(unittest.TestCase):
             set(seeded_codes),
         )
         self.assertEqual(len(CORE_TECHNIQUE_CODES), 20)
-        self.assertEqual(len(EXTENDED_TECHNIQUE_CODES), 14)
+        self.assertEqual(len(EXTENDED_TECHNIQUE_CODES), 15)
 
     def test_attack_catalog_validation_rejects_duplicate_technique_ids(self):
         invalid_catalog = [
@@ -455,6 +455,32 @@ class DefenseGraphConfidenceTests(unittest.TestCase):
         short_core = CORE_TECHNIQUE_CODES[:-1]
         with self.assertRaisesRegex(ValueError, "exactly 20 unique techniques"):
             validate_attack_catalog(ATTACK_TECHNIQUE_CATALOG, short_core, EXTENDED_TECHNIQUE_CODES, CAPABILITY_TECHNIQUE_MAPS)
+
+    def test_named_capability_mapping_patches_are_present_and_idempotent(self):
+        capabilities = self.client.get("/capabilities")
+        self.assertEqual(capabilities.status_code, 200)
+        capability_rows = {item["name"]: item for item in capabilities.json()}
+
+        remote_access = capability_rows["Remote Access Abuse Detection"]
+        remote_codes = {item["technique_code"] for item in remote_access["related_techniques"]}
+        self.assertTrue({"T1078", "T1021", "T1133", "T1087", "T1110"}.issubset(remote_codes))
+
+        host_isolation = capability_rows["Host Isolation Automation"]
+        host_isolation_codes = {item["technique_code"] for item in host_isolation["related_techniques"]}
+        self.assertTrue({"T1021", "T1105", "T1071", "T1041", "T1570"}.issubset(host_isolation_codes))
+
+        account_disable = capability_rows["Account Disable Automation"]
+        account_disable_codes = {item["technique_code"] for item in account_disable["related_techniques"]}
+        self.assertTrue({"T1078", "T1136", "T1098", "T1110", "T1003"}.issubset(account_disable_codes))
+
+        with self.session_local() as db:
+            before_count = db.query(CapabilityTechniqueMap).count()
+            from app.seed import _apply_named_capability_mapping_patches
+
+            _apply_named_capability_mapping_patches(db)
+            after_count = db.query(CapabilityTechniqueMap).count()
+
+        self.assertEqual(before_count, after_count)
 
     def test_tags_endpoint_returns_seeded_tag_catalog(self):
         response = self.client.get("/tags")

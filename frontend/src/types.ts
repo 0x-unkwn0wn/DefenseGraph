@@ -60,6 +60,7 @@ export interface Capability {
   supported_by_response: boolean;
   requires_configuration: boolean;
   configuration_profile_type: string | null;
+  related_techniques?: CapabilityTechniqueLink[];
 }
 
 export interface DataSource {
@@ -238,6 +239,7 @@ export interface CapabilityTechniqueLink {
   technique_id: number;
   technique_code: string;
   technique_name: string;
+  attack_url: string;
   control_effect: Exclude<ControlEffect, "none">;
   coverage: MappingCoverage;
 }

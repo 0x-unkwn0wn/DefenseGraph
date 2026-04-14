@@ -56,6 +56,7 @@ class CapabilityRead(BaseModel):
     supported_by_response: bool
     requires_configuration: bool
     configuration_profile_type: str | None
+    related_techniques: list["CapabilityTechniqueMapRead"] = []
 
 
 class DataSourceRead(BaseModel):
@@ -107,6 +108,7 @@ class CapabilityTechniqueMapRead(BaseModel):
     technique_id: int
     technique_code: str
     technique_name: str
+    attack_url: str
     control_effect: MappedControlEffect
     coverage: MappingCoverage
 

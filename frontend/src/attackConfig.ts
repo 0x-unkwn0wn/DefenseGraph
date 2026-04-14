@@ -77,6 +77,7 @@ export const attackTechniqueCatalog: AttackTechniqueDefinition[] = [
   { code: "T1071.004", tactic: "Command & Control", displayGroup: "core" },
   { code: "T1568", tactic: "Command & Control", displayGroup: "core" },
   { code: "T1090", tactic: "Command & Control", displayGroup: "extended" },
+  { code: "T1105", tactic: "Command & Control", displayGroup: "extended" },
   { code: "T1114", tactic: "Collection / Exfiltration", displayGroup: "extended" },
   { code: "T1041", tactic: "Collection / Exfiltration", displayGroup: "core" },
   { code: "T1567", tactic: "Collection / Exfiltration", displayGroup: "core" },

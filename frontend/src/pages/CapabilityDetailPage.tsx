@@ -146,9 +146,9 @@ export function CapabilityDetailPage({ capabilityId }: CapabilityDetailPageProps
           {detail.related_techniques.map((technique) => (
             <div key={`${technique.technique_code}-${technique.control_effect}`} className="detail-item">
               <div className="detail-row">
-                <span>
+                <a href={technique.attack_url} target="_blank" rel="noreferrer" className="capability-link">
                   {technique.technique_code} - {technique.technique_name}
-                </span>
+                </a>
                 <div className="workspace-badges">
                   <span className={`coverage-pill ${technique.control_effect}`}>{technique.control_effect}</span>
                   <span className="count-chip">{technique.coverage}</span>

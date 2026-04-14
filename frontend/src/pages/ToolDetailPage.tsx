@@ -588,6 +588,14 @@ export function ToolDetailPage({
                       <strong className="capability-title">{capability.name}</strong>
                     </a>
                     <p className="muted">{capability.description}</p>
+                    {capability.related_techniques && capability.related_techniques.length > 0 ? (
+                      <p className="muted">
+                        ATT&CK:{" "}
+                        {capability.related_techniques
+                          .map((technique) => technique.technique_code)
+                          .join(", ")}
+                      </p>
+                    ) : null}
                     {capability.requires_configuration ? (
                       <p className="muted">Requires configuration verification.</p>
                     ) : null}

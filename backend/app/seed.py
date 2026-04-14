@@ -466,6 +466,9 @@ TECHNIQUE_RELEVANT_SCOPES = [
     ("T1090", "network", "primary"),
     ("T1090", "endpoint_user_device", "secondary"),
     ("T1090", "server", "secondary"),
+    ("T1105", "endpoint_user_device", "primary"),
+    ("T1105", "server", "primary"),
+    ("T1105", "cloud_workload", "secondary"),
     ("T1114", "email", "primary"),
     ("T1114", "saas", "secondary"),
     ("T1041", "endpoint_user_device", "primary"),
@@ -535,6 +538,7 @@ ATTACK_TECHNIQUE_CATALOG = [
     {"code": "T1071.004", "name": "DNS", "tactic": "Command & Control"},
     {"code": "T1568", "name": "Dynamic Resolution", "tactic": "Command & Control"},
     {"code": "T1090", "name": "Proxy", "tactic": "Command & Control"},
+    {"code": "T1105", "name": "Ingress Tool Transfer", "tactic": "Command & Control"},
     {"code": "T1114", "name": "Email Collection", "tactic": "Collection / Exfiltration"},
     {"code": "T1041", "name": "Exfiltration Over C2 Channel", "tactic": "Collection / Exfiltration"},
     {"code": "T1567", "name": "Exfiltration Over Web Service", "tactic": "Collection / Exfiltration"},
@@ -579,6 +583,7 @@ EXTENDED_TECHNIQUE_CODES = [
     "T1135",
     "T1570",
     "T1090",
+    "T1105",
     "T1114",
 ]
 
@@ -675,6 +680,21 @@ CAPABILITY_TECHNIQUE_MAPS = [
     ("CAP-025", "T1190", "block", "partial"),
     ("CAP-025", "T1133", "detect", "partial"),
     ("CAP-025", "T1133", "block", "partial"),
+    ("CAP-027", "T1078", "block", "full"),
+    ("CAP-027", "T1136", "block", "partial"),
+    ("CAP-027", "T1098", "block", "full"),
+    ("CAP-027", "T1110", "block", "full"),
+    ("CAP-027", "T1003", "block", "partial"),
+    ("CAP-028", "T1021", "block", "full"),
+    ("CAP-028", "T1105", "block", "partial"),
+    ("CAP-028", "T1071", "block", "partial"),
+    ("CAP-028", "T1041", "block", "full"),
+    ("CAP-028", "T1570", "block", "full"),
+    ("CAP-030", "T1078", "detect", "full"),
+    ("CAP-030", "T1021", "detect", "full"),
+    ("CAP-030", "T1133", "detect", "full"),
+    ("CAP-030", "T1087", "detect", "partial"),
+    ("CAP-030", "T1110", "detect", "partial"),
     ("CAP-031", "T1190", "detect", "full"),
     ("CAP-031", "T1190", "prevent", "full"),
     ("CAP-032", "T1021", "block", "full"),
@@ -682,6 +702,30 @@ CAPABILITY_TECHNIQUE_MAPS = [
     ("CAP-032", "T1570", "block", "partial"),
     ("CAP-032", "T1135", "block", "partial"),
 ]
+
+CAPABILITY_MAPPING_PATCHES_BY_NAME = {
+    "Remote Access Abuse Detection": [
+        ("T1078", "detect", "full"),
+        ("T1021", "detect", "full"),
+        ("T1133", "detect", "full"),
+        ("T1087", "detect", "partial"),
+        ("T1110", "detect", "partial"),
+    ],
+    "Host Isolation Automation": [
+        ("T1021", "block", "full"),
+        ("T1105", "block", "partial"),
+        ("T1071", "block", "partial"),
+        ("T1041", "block", "full"),
+        ("T1570", "block", "full"),
+    ],
+    "Account Disable Automation": [
+        ("T1078", "block", "full"),
+        ("T1136", "block", "partial"),
+        ("T1098", "block", "full"),
+        ("T1110", "block", "full"),
+        ("T1003", "block", "partial"),
+    ],
+}
 
 
 def validate_attack_catalog(
@@ -712,18 +756,18 @@ def validate_attack_catalog(
     extended_set = set(extended)
     if len(core) != 20 or len(core_set) != 20:
         raise ValueError("Core technique set must contain exactly 20 unique techniques.")
-    if len(extended) != 14 or len(extended_set) != 14:
-        raise ValueError("Extended technique set must contain exactly 14 unique techniques.")
+    if len(extended) != 15 or len(extended_set) != 15:
+        raise ValueError("Extended technique set must contain exactly 15 unique techniques.")
 
     overlap = sorted(core_set & extended_set)
     if overlap:
         raise ValueError(f"Techniques cannot appear in both Core and Extended: {', '.join(overlap)}")
 
     catalog_set = set(catalog_codes)
-    if len(catalog_set) != 34:
-        raise ValueError("ATT&CK catalog must contain exactly 34 unique techniques.")
+    if len(catalog_set) != 35:
+        raise ValueError("ATT&CK catalog must contain exactly 35 unique techniques.")
     if core_set | extended_set != catalog_set:
-        raise ValueError("Core and Extended technique sets must partition the 34-technique catalog exactly.")
+        raise ValueError("Core and Extended technique sets must partition the 35-technique catalog exactly.")
 
     mapped_codes = {technique_code for _, technique_code, _, _ in mappings}
     unmapped = sorted(catalog_set - mapped_codes)
@@ -1306,6 +1350,99 @@ LEGACY_CAPABILITY_MAP = {
 }
 
 
+def _normalize_capability_name(name: str) -> str:
+    return "".join(character for character in name.casefold() if character.isalnum())
+
+
+def _upsert_reference_rows(db: Session, model, rows: list[dict[str, object]]) -> None:
+    existing_rows = {
+        row.code: row
+        for row in db.scalars(select(model)).all()
+    }
+    for row in rows:
+        existing = existing_rows.get(row["code"])
+        if existing is None:
+            db.add(model(**row))
+            continue
+        for field, value in row.items():
+            setattr(existing, field, value)
+
+
+def _apply_named_capability_mapping_patches(db: Session) -> None:
+    capabilities = db.scalars(select(Capability)).all()
+    techniques = {
+        technique.code: technique
+        for technique in db.scalars(select(Technique)).all()
+    }
+    capability_by_name = {capability.name: capability for capability in capabilities}
+    capability_by_normalized_name = {
+        _normalize_capability_name(capability.name): capability
+        for capability in capabilities
+    }
+    existing_mappings = {
+        (mapping.capability_id, mapping.technique_id, mapping.control_effect)
+        for mapping in db.scalars(select(CapabilityTechniqueMap)).all()
+    }
+
+    missing_techniques = sorted(
+        {
+            technique_code
+            for mapping_entries in CAPABILITY_MAPPING_PATCHES_BY_NAME.values()
+            for technique_code, _, _ in mapping_entries
+            if technique_code not in techniques
+        }
+    )
+    if missing_techniques:
+        raise ValueError(
+            "Cannot apply capability mapping patches because these ATT&CK techniques are missing: "
+            + ", ".join(missing_techniques)
+        )
+
+    summary_lines: list[str] = []
+    added_count = 0
+
+    for capability_name, mapping_entries in CAPABILITY_MAPPING_PATCHES_BY_NAME.items():
+        capability = capability_by_name.get(capability_name) or capability_by_normalized_name.get(
+            _normalize_capability_name(capability_name)
+        )
+        if capability is None:
+            summary_lines.append(f"[mapping] capability not found: {capability_name}")
+            continue
+
+        linked_techniques: list[str] = []
+        skipped_techniques: list[str] = []
+        for technique_code, control_effect, coverage in mapping_entries:
+            mapping_key = (capability.id, techniques[technique_code].id, control_effect)
+            if mapping_key in existing_mappings:
+                skipped_techniques.append(f"{technique_code}/{control_effect}")
+                continue
+
+            db.add(
+                CapabilityTechniqueMap(
+                    capability_id=capability.id,
+                    technique_id=techniques[technique_code].id,
+                    control_effect=control_effect,
+                    coverage=coverage,
+                )
+            )
+            existing_mappings.add(mapping_key)
+            linked_techniques.append(f"{technique_code}/{control_effect}")
+            added_count += 1
+
+        found_message = f"[mapping] capability found: {capability.name}"
+        if linked_techniques:
+            found_message += f" | linked: {', '.join(linked_techniques)}"
+        if skipped_techniques:
+            found_message += f" | skipped existing: {', '.join(skipped_techniques)}"
+        summary_lines.append(found_message)
+
+    if added_count:
+        db.commit()
+
+    for line in summary_lines:
+        print(line)
+
+
 def sync_reference_data(db: Session) -> None:
     capability_codes = {code for (code,) in db.execute(select(Capability.code)).all()}
     technique_codes = {code for (code,) in db.execute(select(Technique.code)).all()}
@@ -1322,26 +1459,11 @@ def sync_reference_data(db: Session) -> None:
     ):
         return
 
-    db.query(TechniqueRelevantScope).delete()
-    db.query(CapabilitySupportedResponseAction).delete()
-    db.query(CapabilityRequiredDataSource).delete()
-    db.query(CapabilityTechniqueMap).delete()
-    db.query(ToolCapabilityTemplate).delete()
-    db.query(CapabilityAssessmentQuestion).delete()
-    db.query(CapabilityAssessmentTemplate).delete()
-    db.query(CapabilityConfigurationQuestion).delete()
-    db.query(CoverageScope).delete()
-    db.query(ResponseAction).delete()
-    db.query(DataSource).delete()
-    db.query(Capability).delete()
-    db.query(Technique).delete()
-    db.commit()
-
-    db.add_all(Capability(**capability) for capability in CAPABILITIES)
-    db.add_all(Technique(**technique) for technique in TECHNIQUES)
-    db.add_all(DataSource(**data_source) for data_source in DATA_SOURCES)
-    db.add_all(ResponseAction(**action) for action in RESPONSE_ACTIONS)
-    db.add_all(CoverageScope(**scope) for scope in COVERAGE_SCOPES)
+    _upsert_reference_rows(db, Capability, CAPABILITIES)
+    _upsert_reference_rows(db, Technique, TECHNIQUES)
+    _upsert_reference_rows(db, DataSource, DATA_SOURCES)
+    _upsert_reference_rows(db, ResponseAction, RESPONSE_ACTIONS)
+    _upsert_reference_rows(db, CoverageScope, COVERAGE_SCOPES)
     db.commit()
 
     seed_reference_data(db)
@@ -1377,14 +1499,6 @@ def seed_reference_data(db: Session) -> None:
 
 
 def _seed_capability_technique_maps(db: Session) -> None:
-    existing_map_count = db.query(CapabilityTechniqueMap).count()
-    if existing_map_count == len(CAPABILITY_TECHNIQUE_MAPS):
-        return
-
-    if existing_map_count:
-        db.query(CapabilityTechniqueMap).delete()
-        db.commit()
-
     capabilities = {
         capability.code: capability
         for capability in db.scalars(select(Capability)).all()
@@ -1393,40 +1507,58 @@ def _seed_capability_technique_maps(db: Session) -> None:
         technique.code: technique
         for technique in db.scalars(select(Technique)).all()
     }
+    existing_mappings = {
+        (mapping.capability_id, mapping.technique_id, mapping.control_effect)
+        for mapping in db.scalars(select(CapabilityTechniqueMap)).all()
+    }
 
-    db.add_all(
-        CapabilityTechniqueMap(
-            capability_id=capabilities[capability_code].id,
-            technique_id=techniques[technique_code].id,
-            control_effect=control_effect,
-            coverage=coverage,
+    added = False
+    for capability_code, technique_code, control_effect, coverage in CAPABILITY_TECHNIQUE_MAPS:
+        mapping_key = (capabilities[capability_code].id, techniques[technique_code].id, control_effect)
+        if mapping_key in existing_mappings:
+            continue
+        db.add(
+            CapabilityTechniqueMap(
+                capability_id=capabilities[capability_code].id,
+                technique_id=techniques[technique_code].id,
+                control_effect=control_effect,
+                coverage=coverage,
+            )
         )
-        for capability_code, technique_code, control_effect, coverage in CAPABILITY_TECHNIQUE_MAPS
-    )
-    db.commit()
+        existing_mappings.add(mapping_key)
+        added = True
+
+    if added:
+        db.commit()
+
+    _apply_named_capability_mapping_patches(db)
 
 
 def _seed_technique_relevant_scopes(db: Session) -> None:
-    existing_count = db.query(TechniqueRelevantScope).count()
-    if existing_count == len(TECHNIQUE_RELEVANT_SCOPES):
-        return
-
-    if existing_count:
-        db.query(TechniqueRelevantScope).delete()
-        db.commit()
-
     techniques = {technique.code: technique for technique in db.scalars(select(Technique)).all()}
     scopes = {scope.code: scope for scope in db.scalars(select(CoverageScope)).all()}
+    existing_links = {
+        (link.technique_id, link.coverage_scope_id, link.relevance)
+        for link in db.scalars(select(TechniqueRelevantScope)).all()
+    }
 
-    db.add_all(
-        TechniqueRelevantScope(
-            technique_id=techniques[technique_code].id,
-            coverage_scope_id=scopes[scope_code].id,
-            relevance=relevance,
+    added = False
+    for technique_code, scope_code, relevance in TECHNIQUE_RELEVANT_SCOPES:
+        link_key = (techniques[technique_code].id, scopes[scope_code].id, relevance)
+        if link_key in existing_links:
+            continue
+        db.add(
+            TechniqueRelevantScope(
+                technique_id=techniques[technique_code].id,
+                coverage_scope_id=scopes[scope_code].id,
+                relevance=relevance,
+            )
         )
-        for technique_code, scope_code, relevance in TECHNIQUE_RELEVANT_SCOPES
-    )
-    db.commit()
+        existing_links.add(link_key)
+        added = True
+
+    if added:
+        db.commit()
 
 
 def _seed_assessment_templates(db: Session) -> None:

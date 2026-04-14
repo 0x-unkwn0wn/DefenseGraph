@@ -1,6 +1,6 @@
 # DefenseGraph ATT&CK catalog
 
-DefenseGraph uses a curated catalog of 34 Enterprise ATT&CK techniques and sub-techniques. The product shows a high-signal Core subset by default and keeps the rest available as Extended techniques when deeper review is needed.
+DefenseGraph uses a curated catalog of 35 Enterprise ATT&CK techniques and sub-techniques. The product shows a high-signal Core subset by default and keeps the rest available as Extended techniques when deeper review is needed.
 
 ## Why Core and Extended exist
 
@@ -32,7 +32,7 @@ DefenseGraph uses a curated catalog of 34 Enterprise ATT&CK techniques and sub-t
 | Credential Access | `T1003.006` DCSync |
 | Discovery | `T1082` System Information Discovery, `T1016` System Network Configuration Discovery, `T1135` Network Share Discovery |
 | Lateral Movement | `T1570` Lateral Tool Transfer |
-| Command & Control | `T1090` Proxy |
+| Command & Control | `T1090` Proxy, `T1105` Ingress Tool Transfer |
 | Collection / Exfiltration | `T1114` Email Collection |
 
 ## Mapping philosophy
@@ -41,4 +41,4 @@ DefenseGraph uses a curated catalog of 34 Enterprise ATT&CK techniques and sub-t
 - Every technique in the catalog has at least one capability mapping.
 - Strong mappings use `detect`, `block`, or `prevent` where the control is directly credible.
 - Weaker coverage stays partial and confidence-sensitive rather than pretending to be stronger than it is.
-- The matrix groups techniques into simplified tactic buckets so the UI stays readable even with 34 techniques.
+- The matrix groups techniques into simplified tactic buckets so the UI stays readable even with 35 techniques.
