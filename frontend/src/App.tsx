@@ -24,6 +24,7 @@ import {
 import { AppShell } from "./components/AppShell";
 import { CapabilityDetailPage } from "./pages/CapabilityDetailPage";
 import { CoveragePage } from "./pages/CoveragePage";
+import { DocsPage } from "./pages/DocsPage";
 import { GapsPage } from "./pages/GapsPage";
 import { ToolDetailPage } from "./pages/ToolDetailPage";
 import { ToolsPage } from "./pages/ToolsPage";
@@ -50,7 +51,8 @@ type Route =
   | { page: "tool-detail"; toolId: number }
   | { page: "capability-detail"; capabilityId: number }
   | { page: "coverage" }
-  | { page: "gaps" };
+  | { page: "gaps" }
+  | { page: "docs" };
 
 function parseRoute(hash: string): Route {
   const toolMatch = hash.match(/^#\/tools\/(\d+)$/);
@@ -69,6 +71,10 @@ function parseRoute(hash: string): Route {
 
   if (hash === "#/gaps") {
     return { page: "gaps" };
+  }
+
+  if (hash === "#/docs") {
+    return { page: "docs" };
   }
 
   return { page: "tools" };
@@ -398,6 +404,11 @@ export default function App() {
           title: "Coverage Gaps",
           description: "Prioritized ATT&CK weaknesses including low confidence and dependency risks.",
         };
+      case "docs":
+        return {
+          title: "Documentation",
+          description: "Dynamic in-app reference generated from current tool, capability, and mapping data.",
+        };
     }
   })();
 
@@ -448,6 +459,10 @@ export default function App() {
 
       {!isLoading && route.page === "gaps" ? (
         <GapsPage coverage={coverage} tools={tools} capabilities={capabilities} />
+      ) : null}
+
+      {!isLoading && route.page === "docs" ? (
+        <DocsPage />
       ) : null}
     </AppShell>
   );

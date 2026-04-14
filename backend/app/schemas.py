@@ -308,6 +308,10 @@ class ToolTagsUpdate(BaseModel):
     tags: list[ToolTag]
 
 
+class ToolTypesUpdate(BaseModel):
+    tool_types: list[ToolType]
+
+
 class ToolCapabilityUpsert(BaseModel):
     capability_id: int
     control_effect: ControlEffect
@@ -376,6 +380,39 @@ class ToolTagRead(BaseModel):
 class ToolTagSuggestionRead(BaseModel):
     category: ToolCategory
     suggested_tags: list[ToolTagRead]
+
+
+class DocsToolTypeRead(BaseModel):
+    tool_type: ToolType
+    tool_count: int
+    description: str
+    inputs: list[str]
+    outputs: list[str]
+    example_usage: list[str]
+
+
+class DocsCapabilityRead(BaseModel):
+    capability: CapabilityRead
+    purpose: str
+    typical_use_cases: list[str]
+    tool_types: list[ToolType]
+    implementing_tool_count: int
+    related_techniques: list[str]
+
+
+class DocsToolTypeMappingRead(BaseModel):
+    tool_type: ToolType
+    capabilities: list[CapabilityRead]
+
+
+class DocsCapabilityMappingRead(BaseModel):
+    capability: CapabilityRead
+    tool_types: list[ToolType]
+
+
+class DocsMappingRead(BaseModel):
+    tool_type_mappings: list[DocsToolTypeMappingRead]
+    capability_mappings: list[DocsCapabilityMappingRead]
 
 
 class ToolDataSourceRead(BaseModel):

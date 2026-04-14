@@ -16,6 +16,13 @@ python -m uvicorn app.main:app --reload
 
 Backend URL: `http://127.0.0.1:8000`
 
+If you already have an older database version:
+
+```bash
+cd backend
+python scripts/migrate_db.py
+```
+
 ### Frontend
 
 ```bash

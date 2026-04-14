@@ -48,6 +48,9 @@ from app.schemas import (
     CoverageScopeRead,
     ConfigurationSummaryRead,
     DataSourceRead,
+    DocsCapabilityRead,
+    DocsMappingRead,
+    DocsToolTypeRead,
     ResponseActionRead,
     ToolCapabilityAssessmentAnswerRead,
     ToolCapabilityAssessmentSubmission,
@@ -84,6 +87,7 @@ from app.services.configuration import (
 from app.services.confidence import sync_tool_capability_confidence
 from app.services.confidence import calculate_confidence
 from app.services.coverage import compute_coverage
+from app.services.docs import get_capability_docs, get_mapping_docs, get_tool_type_docs
 from app.services.tool_templates import (
     apply_templates_to_tool,
     get_ranked_templates,
@@ -665,6 +669,21 @@ def list_coverage_scopes(db: Session = Depends(get_db)):
 @app.get("/response-actions", response_model=list[ResponseActionRead])
 def list_response_actions(db: Session = Depends(get_db)):
     return db.scalars(select(ResponseAction).order_by(ResponseAction.name)).all()
+
+
+@app.get("/docs/tool-types", response_model=list[DocsToolTypeRead])
+def list_docs_tool_types(db: Session = Depends(get_db)):
+    return get_tool_type_docs(db)
+
+
+@app.get("/docs/capabilities", response_model=list[DocsCapabilityRead])
+def list_docs_capabilities(db: Session = Depends(get_db)):
+    return get_capability_docs(db)
+
+
+@app.get("/docs/mappings", response_model=DocsMappingRead)
+def list_docs_mappings(db: Session = Depends(get_db)):
+    return get_mapping_docs(db)
 
 
 @app.get("/templates", response_model=list[ToolCapabilityTemplateRead])

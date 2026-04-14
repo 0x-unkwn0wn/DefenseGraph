@@ -260,6 +260,142 @@ button {
   padding: 8px 0;
 }
 
+.docs-layout {
+  display: grid;
+  grid-template-columns: 220px minmax(0, 1fr);
+  gap: 16px;
+  align-items: start;
+}
+
+.docs-sidebar-nav {
+  position: sticky;
+  top: 16px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  background: var(--panel);
+}
+
+.docs-sidebar-links {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 10px;
+}
+
+.docs-nav-link {
+  padding: 9px 10px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--text-soft);
+  text-align: left;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-size: 0.78rem;
+  cursor: pointer;
+  transition: background-color 120ms ease, border-color 120ms ease, color 120ms ease;
+}
+
+.docs-nav-link:hover,
+.docs-nav-link.active {
+  border-color: var(--border);
+  background: #131a22;
+  color: var(--text);
+}
+
+.docs-content {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.docs-section {
+  scroll-margin-top: 16px;
+}
+
+.docs-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 12px;
+}
+
+.docs-grid.two-column {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.docs-card,
+.docs-panel-block {
+  border: 1px solid var(--border);
+  background: var(--panel-alt);
+  padding: 12px;
+}
+
+.docs-card-head,
+.docs-table-row,
+.docs-chip-row {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.docs-chip-row {
+  flex-wrap: wrap;
+  justify-content: flex-start;
+  margin-top: 10px;
+}
+
+.docs-table-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.docs-table-row {
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--border);
+}
+
+.docs-table-row:last-child {
+  border-bottom: 0;
+  padding-bottom: 0;
+}
+
+.docs-list,
+.docs-steps {
+  margin: 0;
+  padding-left: 18px;
+  color: var(--text-soft);
+}
+
+.docs-list li,
+.docs-steps li {
+  margin: 8px 0;
+}
+
+.docs-accordion summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  cursor: pointer;
+  list-style: none;
+}
+
+.docs-accordion summary::-webkit-details-marker {
+  display: none;
+}
+
+@media (max-width: 1100px) {
+  .docs-layout,
+  .docs-grid.two-column {
+    grid-template-columns: 1fr;
+  }
+
+  .docs-sidebar-nav {
+    position: static;
+  }
+}
+
 .sidebar-footer {
   margin-top: auto;
   padding-top: 12px;

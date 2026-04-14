@@ -2,7 +2,7 @@ import sidebarLogo from "../../images/favicon.png";
 
 interface SidebarProps {
   collapsed: boolean;
-  current: "tools" | "coverage" | "gaps";
+  current: "tools" | "coverage" | "gaps" | "docs";
   onToggle: () => void;
 }
 
@@ -28,6 +28,13 @@ const links = [
     hint: "Coverage weaknesses",
     icon: "gaps",
   },
+  {
+    href: "#/docs",
+    key: "docs",
+    label: "Documentation",
+    hint: "Dynamic system reference",
+    icon: "docs",
+  },
 ] as const;
 
 function NavIcon({ type }: { type: (typeof links)[number]["icon"] }) {
@@ -43,6 +50,14 @@ function NavIcon({ type }: { type: (typeof links)[number]["icon"] }) {
     return (
       <svg viewBox="0 0 16 16" aria-hidden="true">
         <path d="M2.5 12.5V3.5M7.5 12.5V6M12.5 12.5V8.5" />
+      </svg>
+    );
+  }
+
+  if (type === "docs") {
+    return (
+      <svg viewBox="0 0 16 16" aria-hidden="true">
+        <path d="M3 2.5h8l2 2v9H3zM5 6h6M5 8.5h6M5 11h4" />
       </svg>
     );
   }

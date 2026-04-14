@@ -257,6 +257,39 @@ export interface ToolTagDefinition {
   default_categories: ToolCategory[];
 }
 
+export interface DocsToolType {
+  tool_type: ToolType;
+  tool_count: number;
+  description: string;
+  inputs: string[];
+  outputs: string[];
+  example_usage: string[];
+}
+
+export interface DocsCapability {
+  capability: Capability;
+  purpose: string;
+  typical_use_cases: string[];
+  tool_types: ToolType[];
+  implementing_tool_count: number;
+  related_techniques: string[];
+}
+
+export interface DocsToolTypeMapping {
+  tool_type: ToolType;
+  capabilities: Capability[];
+}
+
+export interface DocsCapabilityMapping {
+  capability: Capability;
+  tool_types: ToolType[];
+}
+
+export interface DocsMapping {
+  tool_type_mappings: DocsToolTypeMapping[];
+  capability_mappings: DocsCapabilityMapping[];
+}
+
 export interface ToolDataSource {
   id: number;
   tool_id: number;

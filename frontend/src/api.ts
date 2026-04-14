@@ -9,6 +9,9 @@ import type {
   ConfigurationAnswerValue,
   ControlEffect,
   DataSource,
+  DocsCapability,
+  DocsMapping,
+  DocsToolType,
   ImplementationLevel,
   ResponseAction,
   TechniqueCoverage,
@@ -85,6 +88,18 @@ export function listCoverageScopes() {
 
 export function listResponseActions() {
   return request<ResponseAction[]>("/response-actions");
+}
+
+export function listDocsToolTypes() {
+  return request<DocsToolType[]>("/docs/tool-types");
+}
+
+export function listDocsCapabilities() {
+  return request<DocsCapability[]>("/docs/capabilities");
+}
+
+export function getDocsMappings() {
+  return request<DocsMapping>("/docs/mappings");
 }
 
 export function updateToolTags(toolId: number, tags: string[]) {

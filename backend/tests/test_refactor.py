@@ -1,3 +1,5 @@
+import json
+import sqlite3
 import sys
 import tempfile
 import unittest
@@ -14,6 +16,7 @@ if str(BACKEND_DIR) not in sys.path:
 from app.database import Base
 from app.main import app
 import app.main as main_module
+from app.migration import migrate_legacy_database
 from app.models import CapabilityTechniqueMap, Technique
 from app.seed import (
     ATTACK_TECHNIQUE_CATALOG,
@@ -74,7 +77,7 @@ class DefenseGraphConfidenceTests(unittest.TestCase):
         )
         response = self.client.post(
             "/tools",
-            json={"name": name, "category": category, "tool_type": resolved_tool_type, "tags": []},
+            json={"name": name, "category": category, "tool_types": [resolved_tool_type], "tags": []},
         )
         self.assertEqual(response.status_code, 201)
         return response.json()
@@ -344,7 +347,7 @@ class DefenseGraphConfidenceTests(unittest.TestCase):
         )
         self.assertEqual(row["effective_control_effect"], "detect")
         self.assertFalse(row["is_gap_missing_data_sources"])
-        self.assertTrue(any(item["tool_type"] == "analytics" for item in row["contributing_tools"]))
+        self.assertTrue(any("analytics" in item["tool_types"] for item in row["contributing_tools"]))
 
     def test_response_tool_without_upstream_detection_does_not_create_coverage(self):
         tool = self._create_tool("XSOAR", "SOAR", "response")
@@ -623,6 +626,253 @@ class DefenseGraphConfidenceTests(unittest.TestCase):
         self.assertGreater(len(payload["related_techniques"]), 0)
         self.assertEqual(payload["implementing_tools"][0]["tool_name"], "Identity Control")
         self.assertEqual(len(payload["implementing_tools"][0]["assessment_answers"]), 2)
+
+    def test_docs_endpoints_return_dynamic_tool_types_capabilities_and_mappings(self):
+        analytics_tool = self._create_tool("QRadar", "Security Analytics", "analytics")
+        response_tool = self._create_tool("XSOAR", "SOAR", "response")
+        control_tool = self._create_tool("Mail Gateway", "Email", "control")
+
+        identity_capability = self._find_capability("CAP-009")
+        phishing_capability = self._find_capability("CAP-004")
+
+        self._assign_capability(analytics_tool["id"], identity_capability["id"], "detect", "full")
+        self._assign_capability(response_tool["id"], identity_capability["id"], "detect", "partial")
+        self._assign_capability(control_tool["id"], phishing_capability["id"], "prevent", "full")
+
+        tool_type_rows = self.client.get("/docs/tool-types")
+        self.assertEqual(tool_type_rows.status_code, 200)
+        analytics_row = next(item for item in tool_type_rows.json() if item["tool_type"] == "analytics")
+        self.assertIn("QRadar", analytics_row["example_usage"])
+
+        capability_rows = self.client.get("/docs/capabilities")
+        self.assertEqual(capability_rows.status_code, 200)
+        identity_row = next(item for item in capability_rows.json() if item["capability"]["code"] == "CAP-009")
+        self.assertIn("analytics", identity_row["tool_types"])
+        self.assertGreater(len(identity_row["related_techniques"]), 0)
+
+        mapping_rows = self.client.get("/docs/mappings")
+        self.assertEqual(mapping_rows.status_code, 200)
+        analytics_mapping = next(item for item in mapping_rows.json()["tool_type_mappings"] if item["tool_type"] == "analytics")
+        self.assertTrue(any(capability["code"] == "CAP-009" for capability in analytics_mapping["capabilities"]))
+        capability_mapping = next(
+            item for item in mapping_rows.json()["capability_mappings"] if item["capability"]["code"] == "CAP-009"
+        )
+        self.assertIn("analytics", capability_mapping["tool_types"])
+
+    def test_migrate_legacy_database_preserves_existing_records_and_creates_backup(self):
+        temp_dir = tempfile.TemporaryDirectory()
+        try:
+            temp_path = Path(temp_dir.name)
+            database_path = temp_path / "legacy.db"
+            with sqlite3.connect(database_path) as connection:
+                connection.executescript(
+                    """
+                    CREATE TABLE tools (
+                      id INTEGER PRIMARY KEY,
+                      name TEXT NOT NULL,
+                      category TEXT NOT NULL,
+                      tool_type TEXT NOT NULL
+                    );
+                    CREATE TABLE capabilities (
+                      id INTEGER PRIMARY KEY,
+                      code TEXT NOT NULL,
+                      name TEXT NOT NULL,
+                      domain TEXT NOT NULL
+                    );
+                    CREATE TABLE techniques (
+                      id INTEGER PRIMARY KEY,
+                      code TEXT NOT NULL,
+                      name TEXT NOT NULL
+                    );
+                    CREATE TABLE tool_capabilities (
+                      id INTEGER PRIMARY KEY,
+                      tool_id INTEGER NOT NULL,
+                      capability_id INTEGER NOT NULL,
+                      implementation_level TEXT NOT NULL,
+                      control_effect TEXT NOT NULL,
+                      confidence_source TEXT NOT NULL,
+                      confidence_level TEXT NOT NULL
+                    );
+                    CREATE TABLE tool_capability_evidence (
+                      id INTEGER PRIMARY KEY,
+                      tool_id INTEGER NOT NULL,
+                      capability_id INTEGER NOT NULL,
+                      title TEXT NOT NULL,
+                      evidence_type TEXT NOT NULL,
+                      note TEXT NOT NULL,
+                      file_name TEXT,
+                      recorded_at TEXT NOT NULL
+                    );
+                    CREATE TABLE data_sources (
+                      id INTEGER PRIMARY KEY,
+                      code TEXT NOT NULL,
+                      name TEXT NOT NULL,
+                      category TEXT NOT NULL,
+                      description TEXT NOT NULL
+                    );
+                    CREATE TABLE tool_data_sources (
+                      id INTEGER PRIMARY KEY,
+                      tool_id INTEGER NOT NULL,
+                      data_source_id INTEGER NOT NULL,
+                      ingestion_status TEXT NOT NULL,
+                      notes TEXT NOT NULL
+                    );
+                    CREATE TABLE response_actions (
+                      id INTEGER PRIMARY KEY,
+                      code TEXT NOT NULL,
+                      name TEXT NOT NULL,
+                      description TEXT NOT NULL
+                    );
+                    CREATE TABLE tool_response_actions (
+                      id INTEGER PRIMARY KEY,
+                      tool_id INTEGER NOT NULL,
+                      response_action_id INTEGER NOT NULL,
+                      implementation_level TEXT NOT NULL,
+                      notes TEXT NOT NULL
+                    );
+                    CREATE TABLE coverage_scopes (
+                      id INTEGER PRIMARY KEY,
+                      code TEXT NOT NULL,
+                      name TEXT NOT NULL,
+                      description TEXT NOT NULL
+                    );
+                    CREATE TABLE tool_capability_scopes (
+                      id INTEGER PRIMARY KEY,
+                      tool_capability_id INTEGER NOT NULL,
+                      coverage_scope_id INTEGER NOT NULL,
+                      status TEXT NOT NULL,
+                      notes TEXT NOT NULL
+                    );
+                    CREATE TABLE bas_validations (
+                      id INTEGER PRIMARY KEY,
+                      technique_id INTEGER NOT NULL,
+                      bas_tool_id INTEGER,
+                      bas_result TEXT NOT NULL,
+                      last_validation_date TEXT,
+                      notes TEXT NOT NULL
+                    );
+                    """
+                )
+                connection.execute(
+                    "INSERT INTO tools (id, name, category, tool_type) VALUES (1, 'Legacy QRadar', 'Security Analytics', 'analytics')"
+                )
+                connection.execute(
+                    "INSERT INTO capabilities (id, code, name, domain) VALUES (9, 'CAP-009', 'Identity Misuse Detection', 'identity')"
+                )
+                connection.execute(
+                    "INSERT INTO techniques (id, code, name) VALUES (1, 'T1078', 'Valid Accounts')"
+                )
+                connection.execute(
+                    """
+                    INSERT INTO tool_capabilities
+                    (id, tool_id, capability_id, implementation_level, control_effect, confidence_source, confidence_level)
+                    VALUES (10, 1, 9, 'full', 'detect', 'evidenced', 'high')
+                    """
+                )
+                connection.execute(
+                    """
+                    INSERT INTO tool_capability_evidence
+                    (id, tool_id, capability_id, title, evidence_type, note, file_name, recorded_at)
+                    VALUES (1, 1, 9, 'Legacy export', 'config', 'Preserve this', 'legacy.json', '2026-04-01')
+                    """
+                )
+                connection.execute(
+                    """
+                    INSERT INTO data_sources (id, code, name, category, description)
+                    VALUES (1, 'DS-001', 'Active Directory Logs', 'identity', 'Directory logs')
+                    """
+                )
+                connection.execute(
+                    """
+                    INSERT INTO tool_data_sources (id, tool_id, data_source_id, ingestion_status, notes)
+                    VALUES (1, 1, 1, 'full', 'Already ingested')
+                    """
+                )
+                connection.execute(
+                    """
+                    INSERT INTO response_actions (id, code, name, description)
+                    VALUES (1, 'RA-002', 'Disable Account', 'Disable account')
+                    """
+                )
+                connection.execute(
+                    """
+                    INSERT INTO tool_response_actions (id, tool_id, response_action_id, implementation_level, notes)
+                    VALUES (1, 1, 1, 'partial', 'Available playbook')
+                    """
+                )
+                connection.execute(
+                    """
+                    INSERT INTO coverage_scopes (id, code, name, description)
+                    VALUES (4, 'identity', 'Identity', 'Identity systems')
+                    """
+                )
+                connection.execute(
+                    """
+                    INSERT INTO tool_capability_scopes (id, tool_capability_id, coverage_scope_id, status, notes)
+                    VALUES (1, 10, 4, 'full', 'Identity path covered')
+                    """
+                )
+                connection.execute(
+                    """
+                    INSERT INTO bas_validations (id, technique_id, bas_tool_id, bas_result, last_validation_date, notes)
+                    VALUES (1, 1, 1, 'detected', '2026-04-10', 'Legacy BAS record')
+                    """
+                )
+                connection.commit()
+
+            backup_path = migrate_legacy_database(database_path)
+
+            self.assertIsNotNone(backup_path)
+            self.assertTrue(Path(backup_path).exists())
+
+            with sqlite3.connect(database_path) as connection:
+                tool_row = connection.execute(
+                    "SELECT name, category, tool_types FROM tools WHERE id = 1"
+                ).fetchone()
+                capability_row = connection.execute(
+                    """
+                    SELECT tc.control_effect, tc.implementation_level, tc.confidence_source, tc.confidence_level
+                    FROM tool_capabilities tc
+                    JOIN capabilities c ON c.id = tc.capability_id
+                    WHERE tc.tool_id = 1 AND c.code = 'CAP-009'
+                    """
+                ).fetchone()
+                evidence_row = connection.execute(
+                    "SELECT title, file_name FROM tool_capability_evidence WHERE tool_id = 1"
+                ).fetchone()
+                data_source_row = connection.execute(
+                    "SELECT ingestion_status FROM tool_data_sources WHERE tool_id = 1"
+                ).fetchone()
+                response_action_row = connection.execute(
+                    "SELECT implementation_level FROM tool_response_actions WHERE tool_id = 1"
+                ).fetchone()
+                scope_row = connection.execute(
+                    """
+                    SELECT tcs.status
+                    FROM tool_capability_scopes tcs
+                    JOIN tool_capabilities tc ON tc.id = tcs.tool_capability_id
+                    JOIN capabilities c ON c.id = tc.capability_id
+                    WHERE tc.tool_id = 1 AND c.code = 'CAP-009'
+                    """
+                ).fetchone()
+                bas_row = connection.execute(
+                    "SELECT bas_result, last_validation_date FROM bas_validations WHERE bas_tool_id = 1"
+                ).fetchone()
+
+            self.assertEqual(tool_row[0], "Legacy QRadar")
+            self.assertEqual(tool_row[1], "Security Analytics")
+            self.assertEqual(json.loads(tool_row[2]), ["analytics"])
+            self.assertEqual(capability_row, ("detect", "full", "evidenced", "high"))
+            self.assertEqual(evidence_row, ("Legacy export", "legacy.json"))
+            self.assertEqual(data_source_row[0], "full")
+            self.assertEqual(response_action_row[0], "partial")
+            self.assertEqual(scope_row[0], "full")
+            self.assertEqual(bas_row, ("detected", "2026-04-10"))
+        finally:
+            try:
+                temp_dir.cleanup()
+            except PermissionError:
+                pass
 
 
 if __name__ == "__main__":
