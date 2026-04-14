@@ -45,7 +45,14 @@ export function TechniqueDetailPanel({ technique, onClose }: TechniqueDetailPane
       <div className="detail-panel-section">
         <div className="detail-kv">
           <span className="detail-label">Technique ID</span>
-          <strong>{technique.technique_code}</strong>
+          <a
+            href={technique.attack_url}
+            target="_blank"
+            rel="noreferrer noopener"
+            className="attack-link"
+          >
+            {technique.technique_code} ↗
+          </a>
         </div>
         <div className="detail-kv">
           <span className="detail-label">Catalog scope</span>
