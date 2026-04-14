@@ -19,6 +19,7 @@ import {
   setToolDataSource,
   setToolResponseAction,
   updateToolTags,
+  updateToolTypes,
 } from "./api";
 import { AppShell } from "./components/AppShell";
 import { CapabilityDetailPage } from "./pages/CapabilityDetailPage";
@@ -179,6 +180,22 @@ export default function App() {
       );
     } catch (actionError) {
       setError(actionError instanceof Error ? actionError.message : "Failed to update tags");
+      throw actionError;
+    }
+  }
+
+  async function handleUpdateToolTypes(toolId: number, toolTypes: ToolType[]) {
+    setError(null);
+    try {
+      const updatedTool = await updateToolTypes(toolId, toolTypes);
+      setTools((currentTools) =>
+        currentTools
+          .map((tool) => (tool.id === updatedTool.id ? updatedTool : tool))
+          .sort((left, right) => left.name.localeCompare(right.name)),
+      );
+      setCoverage(await listCoverage());
+    } catch (actionError) {
+      setError(actionError instanceof Error ? actionError.message : "Failed to update tool types");
       throw actionError;
     }
   }
@@ -417,6 +434,7 @@ export default function App() {
           onSaveConfigurationAnswers={handleSaveConfigurationAnswers}
           onSaveCapabilityScopes={handleSaveCapabilityScopes}
           onUpdateTags={handleUpdateToolTags}
+          onUpdateToolTypes={handleUpdateToolTypes}
         />
       ) : null}
 

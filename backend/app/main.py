@@ -70,6 +70,7 @@ from app.schemas import (
     ToolRead,
     ToolTagRead,
     ToolTagsUpdate,
+    ToolTypesUpdate,
     ToolResponseActionRead,
     ToolResponseActionUpsert,
     TechniqueRelevantScopeRead,
@@ -594,6 +595,16 @@ def read_tool(tool_id: int, db: Session = Depends(get_db)):
 def update_tool_tags(tool_id: int, payload: ToolTagsUpdate, db: Session = Depends(get_db)):
     tool = get_tool_or_404(db, tool_id)
     tool.tags = normalize_tags(payload.tags)
+    db.commit()
+    return serialize_tool(get_tool_or_404(db, tool_id))
+
+
+@app.put("/tools/{tool_id}/tool-types", response_model=ToolRead)
+def update_tool_types(tool_id: int, payload: ToolTypesUpdate, db: Session = Depends(get_db)):
+    tool = get_tool_or_404(db, tool_id)
+    if not payload.tool_types:
+        raise HTTPException(status_code=422, detail="At least one tool type is required.")
+    tool.tool_types = list(dict.fromkeys(payload.tool_types))  # deduplicate, preserve order
     db.commit()
     return serialize_tool(get_tool_or_404(db, tool_id))
 

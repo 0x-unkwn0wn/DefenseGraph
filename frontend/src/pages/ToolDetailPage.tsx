@@ -17,6 +17,7 @@ import type {
   ResponseAction,
   ToolDataSource,
   ToolResponseAction,
+  ToolType,
 } from "../types";
 
 interface ToolDetailPageProps {
@@ -73,6 +74,7 @@ interface ToolDetailPageProps {
     notes: string,
   ) => Promise<void>;
   onUpdateTags: (toolId: number, tags: ToolTag[]) => Promise<void>;
+  onUpdateToolTypes: (toolId: number, toolTypes: ToolType[]) => Promise<void>;
 }
 
 const assessmentOptions: AssessmentAnswerValue[] = ["yes", "partial", "no", "unknown"];
@@ -95,6 +97,7 @@ export function ToolDetailPage({
   onSaveConfigurationAnswers,
   onSaveCapabilityScopes,
   onUpdateTags,
+  onUpdateToolTypes,
 }: ToolDetailPageProps) {
   const tool = tools.find((entry) => entry.id === toolId);
   const [expandedCapabilityId, setExpandedCapabilityId] = useState<number | null>(null);
@@ -106,6 +109,7 @@ export function ToolDetailPage({
   const [scopeDraft, setScopeDraft] = useState<Record<number, ScopeStatus>>({});
   const [scopeNotes, setScopeNotes] = useState<Record<number, string>>({});
   const [tagDraft, setTagDraft] = useState<ToolTag[]>(tool?.tags ?? []);
+  const [toolTypesDraft, setToolTypesDraft] = useState<ToolType[]>(tool?.tool_types ?? []);
   const [dataSourceNotes, setDataSourceNotes] = useState<Record<number, string>>({});
   const [responseActionNotes, setResponseActionNotes] = useState<Record<number, string>>({});
   const [customTag, setCustomTag] = useState("");
@@ -119,6 +123,7 @@ export function ToolDetailPage({
 
   useEffect(() => {
     setTagDraft(tool?.tags ?? []);
+    setToolTypesDraft(tool?.tool_types ?? []);
   }, [tool]);
 
   useEffect(() => {
@@ -191,6 +196,21 @@ export function ToolDetailPage({
 
   async function saveTags() {
     await onUpdateTags(activeTool.id, tagDraft);
+  }
+
+  const ALL_TOOL_TYPES: ToolType[] = ["control", "analytics", "response", "assurance"];
+
+  function toggleToolType(type: ToolType) {
+    setToolTypesDraft((current) =>
+      current.includes(type) ? current.filter((t) => t !== type) : [...current, type],
+    );
+  }
+
+  async function saveToolTypes() {
+    if (toolTypesDraft.length === 0) {
+      return;
+    }
+    await onUpdateToolTypes(activeTool.id, toolTypesDraft);
   }
 
   async function submitAssessment() {
@@ -319,11 +339,38 @@ export function ToolDetailPage({
           </div>
           <div className="workspace-badges">
             <span className="count-chip">{activeTool.category}</span>
-            {activeTool.tool_types.map((t) => (
-              <span key={t} className="count-chip">{t}</span>
+          </div>
+        </div>
+
+        <div className="workspace-section">
+          <div className="workspace-section-header">
+            <div>
+              <p className="eyebrow">Tool types</p>
+              <strong className="workspace-title">Select all roles this tool fulfills</strong>
+            </div>
+            <button
+              type="button"
+              className="primary-button"
+              disabled={toolTypesDraft.length === 0}
+              onClick={() => void saveToolTypes()}
+            >
+              Save types
+            </button>
+          </div>
+          <div className="tag-chip-row">
+            {ALL_TOOL_TYPES.map((type) => (
+              <label key={type} className="checkbox-label">
+                <input
+                  type="checkbox"
+                  checked={toolTypesDraft.includes(type)}
+                  onChange={() => toggleToolType(type)}
+                />
+                {type}
+              </label>
             ))}
           </div>
         </div>
+
         <div className="custom-tag-row">
           <input
             className="text-input"

@@ -174,6 +174,7 @@ describe("ToolDetailPage", () => {
         onSaveConfigurationAnswers={vi.fn()}
         onSaveCapabilityScopes={vi.fn()}
         onUpdateTags={vi.fn()}
+        onUpdateToolTypes={vi.fn()}
       />,
     );
 
@@ -248,6 +249,7 @@ describe("ToolDetailPage", () => {
         onSaveConfigurationAnswers={vi.fn()}
         onSaveCapabilityScopes={vi.fn()}
         onUpdateTags={vi.fn()}
+        onUpdateToolTypes={vi.fn()}
       />,
     );
 
@@ -304,6 +306,7 @@ describe("ToolDetailPage", () => {
         onSaveConfigurationAnswers={vi.fn()}
         onSaveCapabilityScopes={vi.fn()}
         onUpdateTags={vi.fn()}
+        onUpdateToolTypes={vi.fn()}
       />,
     );
 

@@ -94,6 +94,13 @@ export function updateToolTags(toolId: number, tags: string[]) {
   });
 }
 
+export function updateToolTypes(toolId: number, toolTypes: ToolType[]) {
+  return request<Tool>(`/tools/${toolId}/tool-types`, {
+    method: "PUT",
+    body: JSON.stringify({ tool_types: toolTypes }),
+  });
+}
+
 export function listToolTemplates(category: ToolCategory, tags: string[]) {
   const query = new URLSearchParams({ category });
   for (const tag of tags) {
