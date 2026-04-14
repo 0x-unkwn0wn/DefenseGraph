@@ -1,19 +1,16 @@
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import { Card } from "../components/Card";
+import { AttackMatrix } from "../components/AttackMatrix";
+import { TechniqueDetailPanel } from "../components/TechniqueDetailPanel";
 import {
   buildDisplayGroupCounters,
+  buildScopeOptions,
   buildTechniqueStates,
   buildToolOptions,
   filterTechniquesByDisplayGroup,
 } from "../coverageHelpers";
-import type {
-  Capability,
-  DerivedTechnique,
-  TechniqueCoverage,
-  TechniqueDisplayGroup,
-  Tool,
-} from "../types";
+import type { Capability, DerivedTechnique, TechniqueCoverage, TechniqueDisplayGroup, Tool } from "../types";
 
 interface GapsPageProps {
   capabilities: Capability[];
@@ -21,80 +18,205 @@ interface GapsPageProps {
   tools: Tool[];
 }
 
-interface GapSectionProps {
+type GapCategoryKey =
+  | "critical"
+  | "detect_only"
+  | "partial"
+  | "low_confidence"
+  | "single_tool_dependency"
+  | "missing_data_sources"
+  | "unconfigured_control"
+  | "partially_configured_control"
+  | "scope_missing"
+  | "scope_partial"
+  | "detection_without_response"
+  | "response_without_detection";
+
+interface GapCategoryDefinition {
   description: string;
-  rows: DerivedTechnique[];
-  title: string;
+  key: GapCategoryKey;
+  label: string;
+  matches: (technique: DerivedTechnique) => boolean;
 }
 
-function GapSection({ description, rows, title }: GapSectionProps) {
-  return (
-    <Card title={title} subtitle="Gap category" actions={<span className="count-chip">{rows.length}</span>}>
-      <p className="section-copy compact-copy">{description}</p>
+const gapCategoryDefinitions: GapCategoryDefinition[] = [
+  {
+    key: "critical",
+    label: "Critical gaps",
+    description: "No effective coverage exists for the technique.",
+    matches: (technique) => technique.is_gap_no_coverage,
+  },
+  {
+    key: "detect_only",
+    label: "Detect only",
+    description: "Coverage is limited to detection and still lacks block or prevent controls.",
+    matches: (technique) => technique.is_gap_detect_only,
+  },
+  {
+    key: "partial",
+    label: "Partial paths",
+    description: "The strongest available control path is still partial.",
+    matches: (technique) => technique.is_gap_partial,
+  },
+  {
+    key: "low_confidence",
+    label: "Low confidence",
+    description: "Coverage exists, but the confidence model remains weak.",
+    matches: (technique) => technique.is_gap_low_confidence,
+  },
+  {
+    key: "single_tool_dependency",
+    label: "Single-tool dependency",
+    description: "Only one tool currently covers the technique.",
+    matches: (technique) => technique.is_gap_single_tool_dependency,
+  },
+  {
+    key: "missing_data_sources",
+    label: "Missing data sources",
+    description: "Analytics coverage depends on upstream data that is missing or incomplete.",
+    matches: (technique) => technique.is_gap_missing_data_sources,
+  },
+  {
+    key: "unconfigured_control",
+    label: "Unconfigured controls",
+    description: "A mapped control exists, but it has not been verified as enabled.",
+    matches: (technique) => technique.is_gap_unconfigured_control,
+  },
+  {
+    key: "partially_configured_control",
+    label: "Partially configured",
+    description: "A mapped control exists, but it is only partially enabled in production.",
+    matches: (technique) => technique.is_gap_partially_configured_control,
+  },
+  {
+    key: "scope_missing",
+    label: "Missing scope",
+    description: "The required operating scope is not covered.",
+    matches: (technique) => technique.is_gap_scope_missing,
+  },
+  {
+    key: "scope_partial",
+    label: "Partial scope",
+    description: "Some relevant scopes are covered, but not all of them.",
+    matches: (technique) => technique.is_gap_scope_partial,
+  },
+  {
+    key: "detection_without_response",
+    label: "Detection without response",
+    description: "The technique is detected but there is no linked response path.",
+    matches: (technique) => technique.is_gap_detection_without_response,
+  },
+  {
+    key: "response_without_detection",
+    label: "Response without detection",
+    description: "A response action exists, but nothing upstream is detecting the technique.",
+    matches: (technique) => technique.is_gap_response_without_detection,
+  },
+];
 
-      <div className="gap-card-list">
-        {rows.length === 0 ? (
-          <div className="empty-state compact">
-            <p>No techniques in this category for the current filter.</p>
-          </div>
-        ) : (
-          rows.map((row) => (
-            <div key={row.technique_code} className="gap-row-card">
-              <div className="gap-row-main">
-                <strong>
-                  {row.technique_code} - {row.technique_name}
-                </strong>
-                <p className="muted">{row.tactic}</p>
-              </div>
-              <div className="gap-badges">
-                <span className={`coverage-pill ${row.coverage_type}`}>{row.coverage_type}</span>
-                <span className={`coverage-pill ${row.confidence_level}`}>{row.confidence_level}</span>
-                {row.is_gap_partial ? <span className="partial-badge">partial</span> : null}
-                {row.is_gap_single_tool_dependency ? <span className="partial-badge">1 tool</span> : null}
-                {row.is_gap_unconfigured_control ? <span className="partial-badge">unconfigured</span> : null}
-                {row.is_gap_partially_configured_control ? <span className="partial-badge">config partial</span> : null}
-                {row.is_gap_scope_missing ? <span className="partial-badge">scope missing</span> : null}
-                {row.is_gap_scope_partial ? <span className="partial-badge">scope partial</span> : null}
-              </div>
-              <span className="gap-tool-count">{row.tool_count} tools</span>
-            </div>
-          ))
-        )}
-      </div>
-    </Card>
-  );
-}
+const allGapCategoryKeys = gapCategoryDefinitions.map((category) => category.key);
 
-export function GapsPage({ capabilities, coverage, tools }: GapsPageProps) {
+export function GapsPage({ capabilities: _capabilities, coverage, tools }: GapsPageProps) {
   const [selectedToolId, setSelectedToolId] = useState<number | "all">("all");
   const [selectedDisplayGroup, setSelectedDisplayGroup] = useState<TechniqueDisplayGroup | "all">("all");
+  const [selectedScope, setSelectedScope] = useState<string>("all");
+  const [selectedTechniqueCode, setSelectedTechniqueCode] = useState<string | null>(null);
+  const [selectedGapCategories, setSelectedGapCategories] = useState<GapCategoryKey[]>(allGapCategoryKeys);
+
   const techniqueStates = buildTechniqueStates({
     coverageRows: coverage,
     tools,
     selectedToolId,
   });
   const displayScopedTechniques = filterTechniquesByDisplayGroup(techniqueStates, selectedDisplayGroup);
-  const groupCounters = buildDisplayGroupCounters(techniqueStates);
+  const scopeOptions = buildScopeOptions(coverage);
   const toolOptions = buildToolOptions(tools);
+  const groupCounters = buildDisplayGroupCounters(techniqueStates);
 
-  const criticalRows = displayScopedTechniques.filter((technique) => technique.is_gap_no_coverage);
-  const detectRows = displayScopedTechniques.filter((technique) => technique.is_gap_detect_only);
-  const partialRows = displayScopedTechniques.filter((technique) => technique.is_gap_partial);
-  const lowConfidenceRows = displayScopedTechniques.filter((technique) => technique.is_gap_low_confidence);
-  const dependencyRows = displayScopedTechniques.filter((technique) => technique.is_gap_single_tool_dependency);
-  const missingDataRows = displayScopedTechniques.filter((technique) => technique.is_gap_missing_data_sources);
-  const unconfiguredRows = displayScopedTechniques.filter((technique) => technique.is_gap_unconfigured_control);
-  const partiallyConfiguredRows = displayScopedTechniques.filter(
-    (technique) => technique.is_gap_partially_configured_control,
+  const scopeFilteredTechniques = displayScopedTechniques.filter(
+    (technique) =>
+      selectedScope === "all" ||
+      technique.relevant_scopes.some((scope) => scope.coverage_scope.code === selectedScope),
   );
-  const missingScopeRows = displayScopedTechniques.filter((technique) => technique.is_gap_scope_missing);
-  const partialScopeRows = displayScopedTechniques.filter((technique) => technique.is_gap_scope_partial);
-  const noResponseRows = displayScopedTechniques.filter((technique) => technique.is_gap_detection_without_response);
-  const orphanResponseRows = displayScopedTechniques.filter((technique) => technique.is_gap_response_without_detection);
+
+  const visibleTechniques = scopeFilteredTechniques.filter((technique) =>
+    gapCategoryDefinitions.some(
+      (category) => selectedGapCategories.includes(category.key) && category.matches(technique),
+    ),
+  );
+
+  const activeTechnique =
+    visibleTechniques.find((technique) => technique.technique_code === selectedTechniqueCode) ?? null;
+
+  useEffect(() => {
+    if (
+      selectedTechniqueCode &&
+      !visibleTechniques.some((technique) => technique.technique_code === selectedTechniqueCode)
+    ) {
+      setSelectedTechniqueCode(null);
+    }
+  }, [selectedTechniqueCode, visibleTechniques]);
+
+  const gapCategoryCounts = useMemo(
+    () =>
+      Object.fromEntries(
+        gapCategoryDefinitions.map((category) => [
+          category.key,
+          scopeFilteredTechniques.filter((technique) => category.matches(technique)).length,
+        ]),
+      ) as Record<GapCategoryKey, number>,
+    [scopeFilteredTechniques],
+  );
+
+  const activeCategorySummary = gapCategoryDefinitions
+    .filter((category) => selectedGapCategories.includes(category.key))
+    .map((category) => category.label)
+    .join(", ");
+
+  function handleSelectTechnique(technique: DerivedTechnique) {
+    setSelectedTechniqueCode((current) =>
+      current === technique.technique_code ? null : technique.technique_code,
+    );
+  }
+
+  function toggleGapCategory(key: GapCategoryKey) {
+    setSelectedGapCategories((current) => {
+      if (current.length === allGapCategoryKeys.length) {
+        return [key];
+      }
+      if (current.includes(key)) {
+        return current.length === 1 ? current : current.filter((entry) => entry !== key);
+      }
+      return [...current, key];
+    });
+  }
 
   return (
-    <div className="stack page-stack">
-      <Card title="Coverage gaps by severity" subtitle="Gaps">
+    <div className={`coverage-layout ${activeTechnique ? "detail-open" : ""}`.trim()}>
+      <Card title="Gap matrix" subtitle="ATT&CK gaps" className="matrix-card">
+        <p className="section-copy">
+          Review ATT&CK weak points with the same matrix view used in Coverage, filtered down to gap conditions only.
+        </p>
+
+        <div className="counter-grid">
+          <div className="counter-card">
+            <span>Visible gap techniques</span>
+            <strong>{visibleTechniques.length}</strong>
+          </div>
+          <div className="counter-card">
+            <span>Critical gaps</span>
+            <strong>{gapCategoryCounts.critical}</strong>
+          </div>
+          <div className="counter-card">
+            <span>Detect only</span>
+            <strong>{gapCategoryCounts.detect_only}</strong>
+          </div>
+          <div className="counter-card">
+            <span>Scope-related gaps</span>
+            <strong>{gapCategoryCounts.scope_missing + gapCategoryCounts.scope_partial}</strong>
+          </div>
+        </div>
+
         <div className="counter-grid compact-counter-grid">
           <div className="counter-card compact">
             <span>Core techniques covered</span>
@@ -118,21 +240,37 @@ export function GapsPage({ capabilities, coverage, tools }: GapsPageProps) {
           </div>
         </div>
 
-        <div className="section-heading">
-          <p className="section-copy compact-copy">Filter by tool to isolate operational weaknesses.</p>
-          <div className="section-heading-controls">
-            <label className="filter-field compact">
+        <div className="filters-card">
+          <div className="filters-grid">
+            <label className="filter-field">
               <span>Tool</span>
               <select
                 className="text-input"
                 value={selectedToolId}
                 onChange={(event) =>
-                  setSelectedToolId(event.target.value === "all" ? "all" : Number(event.target.value))
+                  setSelectedToolId(
+                    event.target.value === "all" ? "all" : Number(event.target.value),
+                  )
                 }
               >
                 {toolOptions.map((tool) => (
                   <option key={tool.id} value={tool.id}>
                     {tool.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <label className="filter-field">
+              <span>Scope</span>
+              <select
+                className="text-input"
+                value={selectedScope}
+                onChange={(event) => setSelectedScope(event.target.value)}
+              >
+                {scopeOptions.map((scope) => (
+                  <option key={scope.code} value={scope.code}>
+                    {scope.name}
                   </option>
                 ))}
               </select>
@@ -154,69 +292,96 @@ export function GapsPage({ capabilities, coverage, tools }: GapsPageProps) {
               </div>
             </div>
           </div>
+
+          <div className="filter-group">
+            <div className="filter-group-heading">
+              <span className="filter-label">Gap categories</span>
+              <button
+                type="button"
+                className="filter-chip"
+                onClick={() => setSelectedGapCategories(allGapCategoryKeys)}
+              >
+                reset
+              </button>
+            </div>
+            <div className="filter-chips">
+              {gapCategoryDefinitions.map((category) => (
+                <button
+                  key={category.key}
+                  type="button"
+                  className={selectedGapCategories.includes(category.key) ? "filter-chip active" : "filter-chip"}
+                  onClick={() => toggleGapCategory(category.key)}
+                  title={category.description}
+                >
+                  {category.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="legend">
+            <div className="legend-item">
+              <span className="legend-swatch none" />
+              <span>No coverage</span>
+            </div>
+            <div className="legend-item">
+              <span className="legend-swatch detect" />
+              <span>Detect only</span>
+            </div>
+            <div className="legend-item">
+              <span className="legend-border critical" />
+              <span>Critical gap</span>
+            </div>
+            <div className="legend-item">
+              <span className="legend-border weak" />
+              <span>Weak gap</span>
+            </div>
+            <div className="legend-item">
+              <span className="legend-dot" />
+              <span>Partial path</span>
+            </div>
+            <div className="legend-item">
+              <span className="legend-flag">LC</span>
+              <span>Low confidence</span>
+            </div>
+            <div className="legend-item">
+              <span className="legend-flag">1T</span>
+              <span>Single-tool dependency</span>
+            </div>
+            <div className="legend-item">
+              <span className="legend-flag">DS</span>
+              <span>Missing data</span>
+            </div>
+            <div className="legend-item">
+              <span className="legend-flag">CFG</span>
+              <span>Unconfigured control</span>
+            </div>
+            <div className="legend-item">
+              <span className="legend-flag">SM</span>
+              <span>Scope missing</span>
+            </div>
+          </div>
         </div>
+
+        <div className="matrix-toolbar">
+          <p className="section-copy compact-copy">
+            {activeTechnique
+              ? `Inspecting ${activeTechnique.technique_code}. Click the selected cell again to close detail.`
+              : visibleTechniques.length === 0
+                ? "No techniques match the current gap filters."
+                : `Showing ${visibleTechniques.length} techniques across: ${activeCategorySummary}.`}
+          </p>
+        </div>
+
+        <AttackMatrix
+          hideEmptyTactics
+          techniques={visibleTechniques}
+          selectedTechniqueCode={selectedTechniqueCode}
+          onSelect={handleSelectTechnique}
+        />
       </Card>
 
-      <GapSection
-        title="Critical gaps"
-        description="No tool currently maps to these techniques."
-        rows={criticalRows}
-      />
-      <GapSection
-        title="Detect only"
-        description="These techniques are only detected and still lack block or prevent controls."
-        rows={detectRows}
-      />
-      <GapSection
-        title="Partial paths"
-        description="The best available control path is still partial."
-        rows={partialRows}
-      />
-      <GapSection
-        title="Low confidence"
-        description="Coverage exists, but confidence remains weak."
-        rows={lowConfidenceRows}
-      />
-      <GapSection
-        title="Single-tool dependency"
-        description="Only one tool currently covers these techniques."
-        rows={dependencyRows}
-      />
-      <GapSection
-        title="Missing data sources"
-        description="Analytics coverage is configured but the required upstream data is missing or incomplete."
-        rows={missingDataRows}
-      />
-      <GapSection
-        title="Unconfigured controls"
-        description="A tool is mapped, but the relevant control has not been verified as enabled."
-        rows={unconfiguredRows}
-      />
-      <GapSection
-        title="Partially configured controls"
-        description="The control exists, but configuration is only partially enabled in production."
-        rows={partiallyConfiguredRows}
-      />
-      <GapSection
-        title="Missing scope"
-        description="A capability is mapped, but the required operating scope is not covered."
-        rows={missingScopeRows}
-      />
-      <GapSection
-        title="Partial scope"
-        description="Some relevant scopes are covered, but the technique is not covered everywhere it matters."
-        rows={partialScopeRows}
-      />
-      <GapSection
-        title="Detection without response"
-        description="These techniques are detected but no linked response action is available."
-        rows={noResponseRows}
-      />
-      <GapSection
-        title="Response without detection"
-        description="Response actions exist, but there is no upstream detection to trigger them."
-        rows={orphanResponseRows}
-      />
+      <TechniqueDetailPanel technique={activeTechnique} onClose={() => setSelectedTechniqueCode(null)} />
     </div>
   );
 }

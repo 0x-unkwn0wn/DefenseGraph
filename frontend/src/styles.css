@@ -839,6 +839,13 @@ button {
   margin-top: 10px;
 }
 
+.filter-group-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
 .compact-filter-group {
   margin-top: 0;
   min-width: 220px;
