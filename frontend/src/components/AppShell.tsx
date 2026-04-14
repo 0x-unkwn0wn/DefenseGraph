@@ -3,7 +3,7 @@ import type { PropsWithChildren } from "react";
 import { Sidebar } from "./Sidebar";
 
 interface AppShellProps extends PropsWithChildren {
-  current: "tools" | "coverage" | "gaps" | "docs";
+  current: "tools" | "coverage" | "docs";
   description: string;
   isSidebarCollapsed: boolean;
   onToggleSidebar: () => void;

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import { Card } from "../components/Card";
 import { AttackMatrix } from "../components/AttackMatrix";
@@ -10,43 +10,176 @@ import {
   buildTechniqueStates,
   buildToolOptions,
   filterTechniqueStates,
+  filterTechniquesByDisplayGroup,
 } from "../coverageHelpers";
-import type { Capability, CoverageType, DerivedTechnique, TechniqueCoverage, Tool } from "../types";
+import type {
+  Capability,
+  CoverageType,
+  DerivedTechnique,
+  TechniqueCoverage,
+  TechniqueDisplayGroup,
+  Tool,
+} from "../types";
+
+type CoverageWorkspaceView = "coverage" | "gaps";
+type GapCategoryKey =
+  | "critical"
+  | "detect_only"
+  | "partial"
+  | "low_confidence"
+  | "single_tool_dependency"
+  | "missing_data_sources"
+  | "unconfigured_control"
+  | "partially_configured_control"
+  | "scope_missing"
+  | "scope_partial"
+  | "detection_without_response"
+  | "response_without_detection";
 
 interface CoveragePageProps {
   capabilities: Capability[];
   coverage: TechniqueCoverage[];
   tools: Tool[];
+  viewMode?: CoverageWorkspaceView;
+  onChangeViewMode?: (view: CoverageWorkspaceView) => void;
+}
+
+interface GapCategoryDefinition {
+  description: string;
+  key: GapCategoryKey;
+  label: string;
+  matches: (technique: DerivedTechnique) => boolean;
 }
 
 const coverageOptions: CoverageType[] = ["none", "detect", "block", "prevent"];
+const gapCategoryDefinitions: GapCategoryDefinition[] = [
+  {
+    key: "critical",
+    label: "Critical gaps",
+    description: "No effective coverage exists for the technique.",
+    matches: (technique) => technique.is_gap_no_coverage,
+  },
+  {
+    key: "detect_only",
+    label: "Detect only",
+    description: "Coverage is limited to detection and still lacks block or prevent controls.",
+    matches: (technique) => technique.is_gap_detect_only,
+  },
+  {
+    key: "partial",
+    label: "Partial paths",
+    description: "The strongest available control path is still partial.",
+    matches: (technique) => technique.is_gap_partial,
+  },
+  {
+    key: "low_confidence",
+    label: "Low confidence",
+    description: "Coverage exists, but the confidence model remains weak.",
+    matches: (technique) => technique.is_gap_low_confidence,
+  },
+  {
+    key: "single_tool_dependency",
+    label: "Single-tool dependency",
+    description: "Only one tool currently covers the technique.",
+    matches: (technique) => technique.is_gap_single_tool_dependency,
+  },
+  {
+    key: "missing_data_sources",
+    label: "Missing data sources",
+    description: "Analytics coverage depends on upstream data that is missing or incomplete.",
+    matches: (technique) => technique.is_gap_missing_data_sources,
+  },
+  {
+    key: "unconfigured_control",
+    label: "Unconfigured controls",
+    description: "A mapped control exists, but it has not been verified as enabled.",
+    matches: (technique) => technique.is_gap_unconfigured_control,
+  },
+  {
+    key: "partially_configured_control",
+    label: "Partially configured",
+    description: "A mapped control exists, but it is only partially enabled in production.",
+    matches: (technique) => technique.is_gap_partially_configured_control,
+  },
+  {
+    key: "scope_missing",
+    label: "Missing scope",
+    description: "The required operating scope is not covered.",
+    matches: (technique) => technique.is_gap_scope_missing,
+  },
+  {
+    key: "scope_partial",
+    label: "Partial scope",
+    description: "Some relevant scopes are covered, but not all of them.",
+    matches: (technique) => technique.is_gap_scope_partial,
+  },
+  {
+    key: "detection_without_response",
+    label: "Detection without response",
+    description: "The technique is detected but there is no linked response path.",
+    matches: (technique) => technique.is_gap_detection_without_response,
+  },
+  {
+    key: "response_without_detection",
+    label: "Response without detection",
+    description: "A response action exists, but nothing upstream is detecting the technique.",
+    matches: (technique) => technique.is_gap_response_without_detection,
+  },
+];
+const allGapCategoryKeys = gapCategoryDefinitions.map((category) => category.key);
 
-export function CoveragePage({ capabilities, coverage, tools }: CoveragePageProps) {
+export function CoveragePage({
+  capabilities: _capabilities,
+  coverage,
+  tools,
+  viewMode = "coverage",
+  onChangeViewMode,
+}: CoveragePageProps) {
+  const [activeView, setActiveView] = useState<CoverageWorkspaceView>(viewMode);
   const [selectedToolId, setSelectedToolId] = useState<number | "all">("all");
   const [selectedCoverage, setSelectedCoverage] = useState<CoverageType[]>(coverageOptions);
   const [selectedScope, setSelectedScope] = useState<string>("all");
-  const [showOnlyGaps, setShowOnlyGaps] = useState(false);
+  const [showOnlyCriticalGaps, setShowOnlyCriticalGaps] = useState(false);
   const [showExtendedTechniques, setShowExtendedTechniques] = useState(false);
+  const [selectedDisplayGroup, setSelectedDisplayGroup] = useState<TechniqueDisplayGroup | "all">("all");
+  const [selectedGapCategories, setSelectedGapCategories] = useState<GapCategoryKey[]>(allGapCategoryKeys);
   const [selectedTechniqueCode, setSelectedTechniqueCode] = useState<string | null>(null);
+
+  useEffect(() => {
+    setActiveView(viewMode);
+  }, [viewMode]);
 
   const techniqueStates = buildTechniqueStates({
     coverageRows: coverage,
     tools,
     selectedToolId,
   });
-  const scopedTechniques = techniqueStates.filter(
-    (technique) => showExtendedTechniques || technique.display_group === "core",
-  );
-  const visibleTechniques = filterTechniqueStates(
-    scopedTechniques,
-    selectedCoverage,
-    showOnlyGaps,
-    selectedScope,
-  );
-  const counters = buildCounters(scopedTechniques);
-  const groupCounters = buildDisplayGroupCounters(techniqueStates);
   const toolOptions = buildToolOptions(tools);
   const scopeOptions = buildScopeOptions(coverage);
+  const groupCounters = buildDisplayGroupCounters(techniqueStates);
+
+  const visibleTechniques =
+    activeView === "coverage"
+      ? filterTechniqueStates(
+          techniqueStates.filter(
+            (technique) => showExtendedTechniques || technique.display_group === "core",
+          ),
+          selectedCoverage,
+          showOnlyCriticalGaps,
+          selectedScope,
+        )
+      : filterTechniquesByDisplayGroup(techniqueStates, selectedDisplayGroup)
+          .filter(
+            (technique) =>
+              selectedScope === "all" ||
+              technique.relevant_scopes.some((scope) => scope.coverage_scope.code === selectedScope),
+          )
+          .filter((technique) =>
+            gapCategoryDefinitions.some(
+              (category) => selectedGapCategories.includes(category.key) && category.matches(technique),
+            ),
+          );
+
   const activeTechnique =
     visibleTechniques.find((technique) => technique.technique_code === selectedTechniqueCode) ?? null;
 
@@ -59,6 +192,31 @@ export function CoveragePage({ capabilities, coverage, tools }: CoveragePageProp
     }
   }, [selectedTechniqueCode, visibleTechniques]);
 
+  const coverageCounters = buildCounters(
+    techniqueStates.filter((technique) => showExtendedTechniques || technique.display_group === "core"),
+  );
+  const gapCategoryCounts = useMemo(
+    () =>
+      Object.fromEntries(
+        gapCategoryDefinitions.map((category) => [
+          category.key,
+          techniqueStates.filter((technique) => category.matches(technique)).length,
+        ]),
+      ) as Record<GapCategoryKey, number>,
+    [techniqueStates],
+  );
+
+  function handleSelectTechnique(technique: DerivedTechnique) {
+    setSelectedTechniqueCode((current) =>
+      current === technique.technique_code ? null : technique.technique_code,
+    );
+  }
+
+  function handleChangeView(nextView: CoverageWorkspaceView) {
+    setActiveView(nextView);
+    onChangeViewMode?.(nextView);
+  }
+
   function toggleCoverageFilter(nextCoverage: CoverageType) {
     setSelectedCoverage((current) => {
       if (current.includes(nextCoverage)) {
@@ -68,35 +226,93 @@ export function CoveragePage({ capabilities, coverage, tools }: CoveragePageProp
     });
   }
 
-  function handleSelectTechnique(technique: DerivedTechnique) {
-    setSelectedTechniqueCode((current) =>
-      current === technique.technique_code ? null : technique.technique_code,
-    );
+  function toggleGapCategory(key: GapCategoryKey) {
+    setSelectedGapCategories((current) => {
+      if (current.length === allGapCategoryKeys.length) {
+        return [key];
+      }
+      if (current.includes(key)) {
+        return current.length === 1 ? current : current.filter((entry) => entry !== key);
+      }
+      return [...current, key];
+    });
   }
+
+  const activeGapCategorySummary = gapCategoryDefinitions
+    .filter((category) => selectedGapCategories.includes(category.key))
+    .map((category) => category.label)
+    .join(", ");
 
   return (
     <div className={`coverage-layout ${activeTechnique ? "detail-open" : ""}`.trim()}>
-      <Card title="Coverage matrix" subtitle="ATT&CK coverage" className="matrix-card">
-        <p className="section-copy">Coverage state by tactic, technique, and selected tool scope.</p>
+      <Card
+        title="Coverage"
+        subtitle={activeView === "coverage" ? "ATT&CK workspace" : "ATT&CK workspace / gaps mode"}
+        className="matrix-card"
+      >
+        <p className="section-copy">
+          {activeView === "coverage"
+            ? "Coverage state by tactic, technique, and selected tool scope."
+            : "Gap-focused ATT&CK view using the same matrix, detail panel, and filters as the main coverage workspace."}
+        </p>
 
-        <div className="counter-grid">
-          <div className="counter-card">
-            <span>{showExtendedTechniques ? "Visible techniques" : "Core techniques"}</span>
-            <strong>{counters.total}</strong>
+        <div className="filter-group view-mode-group">
+          <div className="filter-group-heading">
+            <span className="filter-label">Workspace view</span>
           </div>
-          <div className="counter-card">
-            <span>Covered</span>
-            <strong>{counters.covered}</strong>
-          </div>
-          <div className="counter-card">
-            <span>Gaps</span>
-            <strong>{counters.gaps}</strong>
-          </div>
-          <div className="counter-card">
-            <span>Detect only</span>
-            <strong>{counters.detectOnly}</strong>
+          <div className="filter-chips">
+            {(["coverage", "gaps"] as const).map((mode) => (
+              <button
+                key={mode}
+                type="button"
+                className={activeView === mode ? "filter-chip active" : "filter-chip"}
+                onClick={() => handleChangeView(mode)}
+              >
+                {mode}
+              </button>
+            ))}
           </div>
         </div>
+
+        {activeView === "coverage" ? (
+          <div className="counter-grid">
+            <div className="counter-card">
+              <span>{showExtendedTechniques ? "Visible techniques" : "Core techniques"}</span>
+              <strong>{coverageCounters.total}</strong>
+            </div>
+            <div className="counter-card">
+              <span>Covered</span>
+              <strong>{coverageCounters.covered}</strong>
+            </div>
+            <div className="counter-card">
+              <span>Gaps</span>
+              <strong>{coverageCounters.gaps}</strong>
+            </div>
+            <div className="counter-card">
+              <span>Detect only</span>
+              <strong>{coverageCounters.detectOnly}</strong>
+            </div>
+          </div>
+        ) : (
+          <div className="counter-grid">
+            <div className="counter-card">
+              <span>Visible gap techniques</span>
+              <strong>{visibleTechniques.length}</strong>
+            </div>
+            <div className="counter-card">
+              <span>Critical gaps</span>
+              <strong>{gapCategoryCounts.critical}</strong>
+            </div>
+            <div className="counter-card">
+              <span>Detect only</span>
+              <strong>{gapCategoryCounts.detect_only}</strong>
+            </div>
+            <div className="counter-card">
+              <span>Scope-related gaps</span>
+              <strong>{gapCategoryCounts.scope_missing + gapCategoryCounts.scope_partial}</strong>
+            </div>
+          </div>
+        )}
 
         <div className="counter-grid compact-counter-grid">
           <div className="counter-card compact">
@@ -157,40 +373,88 @@ export function CoveragePage({ capabilities, coverage, tools }: CoveragePageProp
               </select>
             </label>
 
-            <label className="filter-toggle">
-              <input
-                type="checkbox"
-                checked={showOnlyGaps}
-                onChange={(event) => setShowOnlyGaps(event.target.checked)}
-              />
-              <span>Show only critical gaps</span>
-            </label>
+            {activeView === "coverage" ? (
+              <>
+                <label className="filter-toggle">
+                  <input
+                    type="checkbox"
+                    checked={showOnlyCriticalGaps}
+                    onChange={(event) => setShowOnlyCriticalGaps(event.target.checked)}
+                  />
+                  <span>Show only critical gaps</span>
+                </label>
 
-            <label className="filter-toggle">
-              <input
-                type="checkbox"
-                checked={showExtendedTechniques}
-                onChange={(event) => setShowExtendedTechniques(event.target.checked)}
-              />
-              <span>Show extended techniques</span>
-            </label>
+                <label className="filter-toggle">
+                  <input
+                    type="checkbox"
+                    checked={showExtendedTechniques}
+                    onChange={(event) => setShowExtendedTechniques(event.target.checked)}
+                  />
+                  <span>Show extended techniques</span>
+                </label>
+              </>
+            ) : (
+              <div className="filter-group compact-filter-group">
+                <span className="filter-label">Catalog scope</span>
+                <div className="filter-chips">
+                  {(["all", "core", "extended"] as const).map((scope) => (
+                    <button
+                      key={scope}
+                      type="button"
+                      className={selectedDisplayGroup === scope ? "filter-chip active" : "filter-chip"}
+                      onClick={() => setSelectedDisplayGroup(scope)}
+                    >
+                      {scope}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
 
-          <div className="filter-group">
-            <span className="filter-label">Coverage filter</span>
-            <div className="filter-chips">
-              {coverageOptions.map((option) => (
-                <button
-                  key={option}
-                  type="button"
-                  className={selectedCoverage.includes(option) ? "filter-chip active" : "filter-chip"}
-                  onClick={() => toggleCoverageFilter(option)}
-                >
-                  {option}
-                </button>
-              ))}
+          {activeView === "coverage" ? (
+            <div className="filter-group">
+              <span className="filter-label">Coverage filter</span>
+              <div className="filter-chips">
+                {coverageOptions.map((option) => (
+                  <button
+                    key={option}
+                    type="button"
+                    className={selectedCoverage.includes(option) ? "filter-chip active" : "filter-chip"}
+                    onClick={() => toggleCoverageFilter(option)}
+                  >
+                    {option}
+                  </button>
+                ))}
+              </div>
             </div>
-          </div>
+          ) : (
+            <div className="filter-group">
+              <div className="filter-group-heading">
+                <span className="filter-label">Gap categories</span>
+                <button
+                  type="button"
+                  className="filter-chip"
+                  onClick={() => setSelectedGapCategories(allGapCategoryKeys)}
+                >
+                  reset
+                </button>
+              </div>
+              <div className="filter-chips">
+                {gapCategoryDefinitions.map((category) => (
+                  <button
+                    key={category.key}
+                    type="button"
+                    className={selectedGapCategories.includes(category.key) ? "filter-chip active" : "filter-chip"}
+                    onClick={() => toggleGapCategory(category.key)}
+                    title={category.description}
+                  >
+                    {category.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
 
           <div className="legend">
             <div className="legend-item">
@@ -199,27 +463,31 @@ export function CoveragePage({ capabilities, coverage, tools }: CoveragePageProp
             </div>
             <div className="legend-item">
               <span className="legend-swatch detect" />
-              <span>Detect</span>
+              <span>{activeView === "coverage" ? "Detect" : "Detect only"}</span>
             </div>
-            <div className="legend-item">
-              <span className="legend-swatch block" />
-              <span>Block</span>
-            </div>
-            <div className="legend-item">
-              <span className="legend-swatch prevent" />
-              <span>Prevent</span>
-            </div>
+            {activeView === "coverage" ? (
+              <>
+                <div className="legend-item">
+                  <span className="legend-swatch block" />
+                  <span>Block</span>
+                </div>
+                <div className="legend-item">
+                  <span className="legend-swatch prevent" />
+                  <span>Prevent</span>
+                </div>
+              </>
+            ) : null}
             <div className="legend-item">
               <span className="legend-border critical" />
               <span>Critical gap</span>
             </div>
             <div className="legend-item">
               <span className="legend-border weak" />
-              <span>Detect only</span>
+              <span>{activeView === "coverage" ? "Detect only" : "Weak gap"}</span>
             </div>
             <div className="legend-item">
               <span className="legend-dot" />
-              <span>Partial coverage</span>
+              <span>{activeView === "coverage" ? "Partial coverage" : "Partial path"}</span>
             </div>
             <div className="legend-item">
               <span className="legend-flag">LC</span>
@@ -260,17 +528,26 @@ export function CoveragePage({ capabilities, coverage, tools }: CoveragePageProp
           <p className="section-copy compact-copy">
             {activeTechnique
               ? `Inspecting ${activeTechnique.technique_code}. Click the selected cell again to close detail.`
-              : showOnlyGaps
-                ? "Showing only techniques with no effective coverage. Detect-only and partial techniques are hidden in this mode."
-              : showExtendedTechniques
-                ? "Showing Core and Extended techniques. Select a technique to inspect its coverage path, tools, and capabilities."
-                : "Showing Core techniques by default. Enable the Extended toggle for deeper coverage review."}
+              : activeView === "coverage"
+                ? showOnlyCriticalGaps
+                  ? "Showing only techniques with no effective coverage. Detect-only and partial techniques are hidden in this mode."
+                  : showExtendedTechniques
+                    ? "Showing Core and Extended techniques. Switch to Gaps view for gap-first analysis without leaving the workspace."
+                    : "Showing Core techniques by default. Enable Extended or switch to Gaps for a weakness-first analysis."
+                : visibleTechniques.length === 0
+                  ? "No techniques match the current gap filters."
+                  : `Showing ${visibleTechniques.length} techniques across: ${activeGapCategorySummary}.`}
           </p>
         </div>
 
         <AttackMatrix
           hideEmptyTactics={
-            showOnlyGaps || selectedScope !== "all" || selectedToolId !== "all" || selectedCoverage.length !== coverageOptions.length
+            activeView === "coverage"
+              ? showOnlyCriticalGaps ||
+                selectedScope !== "all" ||
+                selectedToolId !== "all" ||
+                selectedCoverage.length !== coverageOptions.length
+              : true
           }
           techniques={visibleTechniques}
           selectedTechniqueCode={selectedTechniqueCode}

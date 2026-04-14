@@ -128,7 +128,7 @@ describe("GapsPage", () => {
 
     expect(screen.getAllByText("Low confidence").length).toBeGreaterThan(0);
     expect(screen.getAllByText("Single-tool dependency").length).toBeGreaterThan(0);
-    expect(screen.getByText("Core techniques covered")).toBeInTheDocument();
+    expect(screen.getByText("Core covered")).toBeInTheDocument();
     expect(screen.getByText("Extended gaps")).toBeInTheDocument();
     expect(screen.getAllByText("1 tool").length).toBeGreaterThan(0);
   });

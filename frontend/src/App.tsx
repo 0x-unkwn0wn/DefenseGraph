@@ -25,7 +25,6 @@ import { AppShell } from "./components/AppShell";
 import { CapabilityDetailPage } from "./pages/CapabilityDetailPage";
 import { CoveragePage } from "./pages/CoveragePage";
 import { DocsPage } from "./pages/DocsPage";
-import { GapsPage } from "./pages/GapsPage";
 import { ToolDetailPage } from "./pages/ToolDetailPage";
 import { ToolsPage } from "./pages/ToolsPage";
 import type {
@@ -50,8 +49,7 @@ type Route =
   | { page: "tools" }
   | { page: "tool-detail"; toolId: number }
   | { page: "capability-detail"; capabilityId: number }
-  | { page: "coverage" }
-  | { page: "gaps" }
+  | { page: "coverage"; view: "coverage" | "gaps" }
   | { page: "docs" };
 
 function parseRoute(hash: string): Route {
@@ -65,12 +63,17 @@ function parseRoute(hash: string): Route {
     return { page: "capability-detail", capabilityId: Number(capabilityMatch[1]) };
   }
 
-  if (hash === "#/coverage") {
-    return { page: "coverage" };
+  if (hash.startsWith("#/coverage")) {
+    const [, queryString = ""] = hash.split("?");
+    const params = new URLSearchParams(queryString);
+    return {
+      page: "coverage",
+      view: params.get("view") === "gaps" ? "gaps" : "coverage",
+    };
   }
 
   if (hash === "#/gaps") {
-    return { page: "gaps" };
+    return { page: "coverage", view: "gaps" };
   }
 
   if (hash === "#/docs") {
@@ -78,6 +81,10 @@ function parseRoute(hash: string): Route {
   }
 
   return { page: "tools" };
+}
+
+function buildCoverageHash(view: "coverage" | "gaps") {
+  return view === "gaps" ? "#/coverage?view=gaps" : "#/coverage";
 }
 
 export default function App() {
@@ -396,13 +403,11 @@ export default function App() {
       }
       case "coverage":
         return {
-          title: "ATT&CK Coverage",
-          description: "Operational coverage matrix with confidence and gap flags.",
-        };
-      case "gaps":
-        return {
-          title: "Coverage Gaps",
-          description: "Prioritized ATT&CK weaknesses including low confidence and dependency risks.",
+          title: "Coverage",
+          description:
+            route.view === "gaps"
+              ? "Unified ATT&CK workspace in gaps mode, focused on weaknesses, confidence issues, and dependencies."
+              : "Unified ATT&CK workspace for coverage analysis, confidence review, and gap inspection.",
         };
       case "docs":
         return {
@@ -454,11 +459,18 @@ export default function App() {
       ) : null}
 
       {!isLoading && route.page === "coverage" ? (
-        <CoveragePage coverage={coverage} tools={tools} capabilities={capabilities} />
-      ) : null}
-
-      {!isLoading && route.page === "gaps" ? (
-        <GapsPage coverage={coverage} tools={tools} capabilities={capabilities} />
+        <CoveragePage
+          coverage={coverage}
+          tools={tools}
+          capabilities={capabilities}
+          viewMode={route.view}
+          onChangeViewMode={(view) => {
+            const nextHash = buildCoverageHash(view);
+            if (window.location.hash !== nextHash) {
+              window.location.hash = nextHash;
+            }
+          }}
+        />
       ) : null}
 
       {!isLoading && route.page === "docs" ? (

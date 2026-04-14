@@ -2,7 +2,7 @@ import sidebarLogo from "../../images/favicon.png";
 
 interface SidebarProps {
   collapsed: boolean;
-  current: "tools" | "coverage" | "gaps" | "docs";
+  current: "tools" | "coverage" | "docs";
   onToggle: () => void;
 }
 
@@ -20,13 +20,6 @@ const links = [
     label: "Coverage",
     hint: "ATT&CK matrix view",
     icon: "coverage",
-  },
-  {
-    href: "#/gaps",
-    key: "gaps",
-    label: "Gaps",
-    hint: "Coverage weaknesses",
-    icon: "gaps",
   },
   {
     href: "#/docs",
