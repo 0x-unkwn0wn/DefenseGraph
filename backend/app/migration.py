@@ -26,6 +26,7 @@ from app.models import (
     ToolCapabilityScope,
     ToolDataSource,
     ToolResponseAction,
+    Vendor,
 )
 from app.seed import seed_reference_data, LEGACY_CAPABILITY_MAP
 
@@ -71,8 +72,10 @@ def _restore_payload(db: Session, payload: dict[str, list[dict[str, object]]]) -
         Tool(
             id=int(tool["id"]),
             name=str(tool["name"]),
+            vendor_id=_resolve_vendor_id(db, tool.get("vendor_name")),
             category=str(tool["category"]),
             tool_types=list(tool["tool_types"]),
+            tool_type_labels=list(tool.get("tool_type_labels", [])),
             tags=list(tool["tags"]),
         )
         for tool in payload["tools"]
@@ -235,6 +238,9 @@ def _restore_payload(db: Session, payload: dict[str, list[dict[str, object]]]) -
 
 def _schema_is_current(connection: sqlite3.Connection) -> bool:
     required_tables = {
+        "vendors",
+        "coverage_roles",
+        "capability_coverage_roles",
         "capability_assessment_templates",
         "capability_assessment_questions",
         "tool_capability_assessment_answers",
@@ -262,8 +268,10 @@ def _schema_is_current(connection: sqlite3.Connection) -> bool:
     tool_capability_columns = _get_table_columns(connection, "tool_capabilities")
 
     return (
-        "category" in tool_columns
+        "vendor_id" in tool_columns
+        and "category" in tool_columns
         and "tool_types" in tool_columns
+        and "tool_type_labels" in tool_columns
         and "tags" in tool_columns
         and {
             "description",
@@ -306,8 +314,12 @@ def _extract_legacy_payload(connection: sqlite3.Connection) -> dict[str, list[di
             {
                 "id": int(tool_id),
                 "name": str(name),
+                "vendor_name": _extract_vendor_name(connection, tool_columns, int(tool_id)),
                 "category": str(category or "Other"),
                 "tool_types": tool_types or ["control"],
+                "tool_type_labels": _deserialize_json_list(
+                    _fetch_optional_value(connection, "tools", "tool_type_labels", int(tool_id), [])
+                ),
                 "tags": tags,
             }
         )
@@ -564,6 +576,32 @@ def _extract_tool_types(connection: sqlite3.Connection, tool_columns: set[str], 
         raw_value = _fetch_optional_value(connection, "tools", "tool_type", tool_id, "control")
         return [str(raw_value or "control")]
     return ["control"]
+
+
+def _extract_vendor_name(connection: sqlite3.Connection, tool_columns: set[str], tool_id: int) -> str | None:
+    if "vendor_id" in tool_columns and _table_exists(connection, "vendors"):
+        vendor_id = _fetch_optional_value(connection, "tools", "vendor_id", tool_id, None)
+        if vendor_id is not None:
+            row = connection.execute("SELECT name FROM vendors WHERE id = ?", (vendor_id,)).fetchone()
+            if row is not None:
+                return str(row[0])
+    if "vendor_name" in tool_columns:
+        raw_value = _fetch_optional_value(connection, "tools", "vendor_name", tool_id, None)
+        if raw_value is not None and str(raw_value).strip():
+            return str(raw_value).strip()
+    return None
+
+
+def _resolve_vendor_id(db: Session, vendor_name: object) -> int | None:
+    if vendor_name is None or not str(vendor_name).strip():
+        return None
+    normalized_name = str(vendor_name).strip()
+    vendor = db.scalar(select(Vendor).where(Vendor.name == normalized_name))
+    if vendor is None:
+        vendor = Vendor(name=normalized_name)
+        db.add(vendor)
+        db.flush()
+    return vendor.id
 
 
 def _deserialize_json_list(raw_value: object) -> list[str]:

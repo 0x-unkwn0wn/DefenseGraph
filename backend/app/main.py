@@ -11,10 +11,12 @@ from app.models import (
     BASValidation,
     Capability,
     CapabilityAssessmentTemplate,
+    CapabilityCoverageRole,
     CapabilityConfigurationQuestion,
     CapabilityRequiredDataSource,
     CapabilitySupportedResponseAction,
     CapabilityTechniqueMap,
+    CoverageRole,
     CoverageScope,
     DataSource,
     ResponseAction,
@@ -30,6 +32,7 @@ from app.models import (
     ToolDataSource,
     ToolResponseAction,
     TechniqueRelevantScope,
+    Vendor,
 )
 from app.schemas import (
     AssessmentTemplateRead,
@@ -45,6 +48,7 @@ from app.schemas import (
     CapabilityTechniqueMapRead,
     ConfidenceSummaryRead,
     ControlRead,
+    CoverageRoleRead,
     CoverageScopeRead,
     ConfigurationSummaryRead,
     DataSourceRead,
@@ -77,6 +81,7 @@ from app.schemas import (
     ToolResponseActionRead,
     ToolResponseActionUpsert,
     TechniqueRelevantScopeRead,
+    VendorRead,
 )
 from app.seed import seed_reference_data, sync_reference_data
 from app.services.configuration import (
@@ -131,10 +136,12 @@ def get_tool_or_404(db: Session, tool_id: int) -> Tool:
     statement = (
         select(Tool)
         .options(
+            joinedload(Tool.vendor),
             joinedload(Tool.capabilities)
             .joinedload(ToolCapability.capability)
             .joinedload(Capability.assessment_template)
             .joinedload(CapabilityAssessmentTemplate.questions),
+            joinedload(Tool.capabilities).joinedload(ToolCapability.capability).joinedload(Capability.coverage_roles).joinedload(CapabilityCoverageRole.coverage_role),
             joinedload(Tool.capabilities).joinedload(ToolCapability.capability).joinedload(Capability.configuration_questions),
             joinedload(Tool.capabilities).joinedload(ToolCapability.capability).joinedload(Capability.technique_maps).joinedload(CapabilityTechniqueMap.technique).joinedload(Technique.relevant_scopes).joinedload(TechniqueRelevantScope.coverage_scope),
             joinedload(Tool.capabilities).joinedload(ToolCapability.assessment_answers),
@@ -172,9 +179,10 @@ def get_capability_or_404(db: Session, capability_id: int) -> Capability:
     statement = (
         select(Capability)
         .options(
+            joinedload(Capability.coverage_roles).joinedload(CapabilityCoverageRole.coverage_role),
             joinedload(Capability.technique_maps).joinedload(CapabilityTechniqueMap.technique),
             joinedload(Capability.assessment_template).joinedload(CapabilityAssessmentTemplate.questions),
-            joinedload(Capability.tool_capabilities).joinedload(ToolCapability.tool),
+            joinedload(Capability.tool_capabilities).joinedload(ToolCapability.tool).joinedload(Tool.vendor),
             joinedload(Capability.tool_capabilities).joinedload(ToolCapability.assessment_answers),
             joinedload(Capability.tool_capabilities).joinedload(ToolCapability.evidence_items),
             joinedload(Capability.tool_capabilities).joinedload(ToolCapability.configuration_profile),
@@ -196,10 +204,11 @@ def get_tool_capability_or_404(db: Session, tool_id: int, capability_id: int) ->
     statement = (
         select(ToolCapability)
         .options(
-            joinedload(ToolCapability.tool),
+            joinedload(ToolCapability.tool).joinedload(Tool.vendor),
             joinedload(ToolCapability.capability)
             .joinedload(Capability.assessment_template)
             .joinedload(CapabilityAssessmentTemplate.questions),
+            joinedload(ToolCapability.capability).joinedload(Capability.coverage_roles).joinedload(CapabilityCoverageRole.coverage_role),
             joinedload(ToolCapability.capability).joinedload(Capability.configuration_questions),
             joinedload(ToolCapability.capability).joinedload(Capability.technique_maps).joinedload(CapabilityTechniqueMap.technique).joinedload(Technique.relevant_scopes).joinedload(TechniqueRelevantScope.coverage_scope),
             joinedload(ToolCapability.capability)
@@ -229,8 +238,10 @@ def serialize_tool(tool: Tool) -> ToolRead:
     return ToolRead(
         id=tool.id,
         name=tool.name,
+        vendor=VendorRead.model_validate(tool.vendor) if tool.vendor else None,
         category=tool.category,
         tool_types=list(tool.tool_types),
+        tool_type_labels=list(tool.tool_type_labels),
         tags=tool.tags,
         capabilities=[
             serialize_tool_capability_read(assignment)
@@ -273,6 +284,10 @@ def serialize_capability_read(capability: Capability) -> CapabilityRead:
         supported_by_response=capability.supported_by_response,
         requires_configuration=capability.requires_configuration,
         configuration_profile_type=capability.configuration_profile_type,
+        coverage_roles=[
+            CoverageRoleRead.model_validate(link.coverage_role)
+            for link in sorted(capability.coverage_roles, key=lambda item: item.coverage_role.name)
+        ],
         related_techniques=[
             CapabilityTechniqueMapRead(
                 technique_id=entry.technique_id,
@@ -557,8 +572,10 @@ def _serialize_capability_implementing_tool(assignment: ToolCapability) -> Capab
     return CapabilityImplementingToolRead(
         tool_id=assignment.tool_id,
         tool_name=assignment.tool.name,
+        vendor=VendorRead.model_validate(assignment.tool.vendor) if assignment.tool.vendor else None,
         tool_category=assignment.tool.category,
         tool_types=list(assignment.tool.tool_types),
+        tool_type_labels=list(assignment.tool.tool_type_labels),
         control_effect=assignment.control_effect,
         implementation_level=assignment.implementation_level,
         confidence_source=summary.confidence_source,
@@ -580,16 +597,34 @@ def _serialize_capability_implementing_tool(assignment: ToolCapability) -> Capab
     )
 
 
+def get_or_create_vendor(db: Session, vendor_name: str | None) -> Vendor | None:
+    if vendor_name is None or not vendor_name.strip():
+        return None
+
+    normalized_name = vendor_name.strip()
+    vendor = db.scalar(select(Vendor).where(Vendor.name == normalized_name))
+    if vendor is not None:
+        return vendor
+
+    vendor = Vendor(name=normalized_name)
+    db.add(vendor)
+    db.flush()
+    return vendor
+
+
 @app.post("/tools", response_model=ToolRead, status_code=201)
 def create_tool(payload: ToolCreate, db: Session = Depends(get_db)):
     existing = db.scalar(select(Tool).where(Tool.name == payload.name.strip()))
     if existing:
         raise HTTPException(status_code=400, detail="Tool already exists")
 
+    vendor = get_or_create_vendor(db, payload.vendor_name)
     tool = Tool(
         name=payload.name.strip(),
+        vendor_id=vendor.id if vendor else None,
         category=payload.category,
         tool_types=list(dict.fromkeys(payload.tool_types)),  # deduplicate, preserve order
+        tool_type_labels=list(dict.fromkeys(item.strip() for item in payload.tool_type_labels if item.strip())),
         tags=normalize_tags(payload.tags),
     )
     db.add(tool)
@@ -603,10 +638,12 @@ def list_tools(db: Session = Depends(get_db)):
     statement = (
         select(Tool)
         .options(
+            joinedload(Tool.vendor),
             joinedload(Tool.capabilities)
             .joinedload(ToolCapability.capability)
             .joinedload(Capability.assessment_template)
             .joinedload(CapabilityAssessmentTemplate.questions),
+            joinedload(Tool.capabilities).joinedload(ToolCapability.capability).joinedload(Capability.coverage_roles).joinedload(CapabilityCoverageRole.coverage_role),
             joinedload(Tool.capabilities).joinedload(ToolCapability.capability).joinedload(Capability.configuration_questions),
             joinedload(Tool.capabilities).joinedload(ToolCapability.scopes).joinedload(ToolCapabilityScope.coverage_scope),
             joinedload(Tool.capabilities).joinedload(ToolCapability.configuration_profile),
@@ -654,7 +691,10 @@ def delete_tool(tool_id: int, db: Session = Depends(get_db)):
 def list_capabilities(db: Session = Depends(get_db)):
     statement = (
         select(Capability)
-        .options(joinedload(Capability.technique_maps).joinedload(CapabilityTechniqueMap.technique))
+        .options(
+            joinedload(Capability.coverage_roles).joinedload(CapabilityCoverageRole.coverage_role),
+            joinedload(Capability.technique_maps).joinedload(CapabilityTechniqueMap.technique),
+        )
         .order_by(Capability.domain, Capability.name)
     )
     return [

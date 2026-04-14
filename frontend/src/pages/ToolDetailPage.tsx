@@ -317,6 +317,7 @@ export function ToolDetailPage({
         subtitle="Tool detail"
         actions={
           <>
+            {tool.vendor ? <span className="count-chip">{tool.vendor.name}</span> : null}
             <span className="count-chip">{tool.category}</span>
             <button
               type="button"
@@ -334,19 +335,38 @@ export function ToolDetailPage({
         <p className="section-copy">
           Configure one capability per control area, then improve confidence with an assessment or evidence.
         </p>
+        {(tool.tool_type_labels ?? []).length > 0 ? (
+          <div className="tag-chip-row compact">
+            {(tool.tool_type_labels ?? []).map((label) => (
+              <span key={label} className="tag-chip static">
+                {label}
+              </span>
+            ))}
+          </div>
+        ) : null}
       </Card>
 
       <Card title="Classification" subtitle="Category and tags">
         <div className="workspace-section-header">
           <div>
             <p className="section-copy">
-              Primary category stays simple. Tags capture hybrid behavior like Active Directory or Password Security.
+              Vendor and product type are optional metadata. The coverage model itself comes from generic capabilities.
             </p>
           </div>
           <div className="workspace-badges">
+            {activeTool.vendor ? <span className="count-chip">{activeTool.vendor.name}</span> : null}
             <span className="count-chip">{activeTool.category}</span>
           </div>
         </div>
+        {(activeTool.tool_type_labels ?? []).length > 0 ? (
+          <div className="tag-chip-row compact">
+            {(activeTool.tool_type_labels ?? []).map((label) => (
+              <span key={label} className="tag-chip static">
+                {label}
+              </span>
+            ))}
+          </div>
+        ) : null}
 
         <div className="workspace-section">
           <div className="workspace-section-header">
@@ -588,6 +608,15 @@ export function ToolDetailPage({
                       <strong className="capability-title">{capability.name}</strong>
                     </a>
                     <p className="muted">{capability.description}</p>
+                    {(capability.coverage_roles ?? []).length > 0 ? (
+                      <div className="tag-chip-row compact">
+                        {(capability.coverage_roles ?? []).map((role) => (
+                          <span key={role.code} className="tag-chip static">
+                            {role.code}
+                          </span>
+                        ))}
+                      </div>
+                    ) : null}
                     {capability.related_techniques && capability.related_techniques.length > 0 ? (
                       <p className="muted">
                         ATT&CK:{" "}

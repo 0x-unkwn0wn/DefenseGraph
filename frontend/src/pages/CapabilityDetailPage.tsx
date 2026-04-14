@@ -54,6 +54,15 @@ export function CapabilityDetailPage({ capabilityId }: CapabilityDetailPageProps
         }
       >
         <p className="section-copy">{detail.capability.description}</p>
+        {(detail.capability.coverage_roles ?? []).length > 0 ? (
+          <div className="tag-chip-row compact">
+            {(detail.capability.coverage_roles ?? []).map((role) => (
+              <span key={role.code} className="tag-chip static">
+                {role.code}
+              </span>
+            ))}
+          </div>
+        ) : null}
         <p className="muted">
           {detail.capability.requires_configuration
             ? `Requires configuration verification (${detail.capability.configuration_profile_type ?? "generic"}).`
@@ -85,7 +94,19 @@ export function CapabilityDetailPage({ capabilityId }: CapabilityDetailPageProps
                     ) : null}
                   </div>
                 </div>
-                <p className="muted">{tool.tool_category}</p>
+                <p className="muted">
+                  {tool.vendor ? `${tool.vendor.name} | ` : ""}
+                  {tool.tool_category}
+                </p>
+                {(tool.tool_type_labels ?? []).length > 0 ? (
+                  <div className="tag-chip-row compact">
+                    {(tool.tool_type_labels ?? []).map((label) => (
+                      <span key={label} className="tag-chip static">
+                        {label}
+                      </span>
+                    ))}
+                  </div>
+                ) : null}
                 <p className="muted">
                   {tool.effectively_active
                     ? "Capability is currently active for this tool."

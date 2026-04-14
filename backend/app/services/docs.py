@@ -3,15 +3,47 @@ from collections import defaultdict
 from sqlalchemy import select
 from sqlalchemy.orm import Session, joinedload
 
-from app.models import Capability, CapabilityTechniqueMap, Tool, ToolCapability, ToolDataSource, ToolResponseAction
+from app.models import Capability, CapabilityCoverageRole, CapabilityTechniqueMap, Tool, ToolCapability, ToolDataSource, ToolResponseAction
 from app.schemas import (
+    CapabilityTechniqueMapRead,
     CapabilityRead,
+    CoverageRoleRead,
     DocsCapabilityMappingRead,
     DocsCapabilityRead,
     DocsMappingRead,
     DocsToolTypeMappingRead,
     DocsToolTypeRead,
 )
+
+
+def _serialize_capability(capability: Capability) -> CapabilityRead:
+    return CapabilityRead(
+        id=capability.id,
+        code=capability.code,
+        name=capability.name,
+        domain=capability.domain,
+        description=capability.description,
+        requires_data_sources=capability.requires_data_sources,
+        supported_by_analytics=capability.supported_by_analytics,
+        supported_by_response=capability.supported_by_response,
+        requires_configuration=capability.requires_configuration,
+        configuration_profile_type=capability.configuration_profile_type,
+        coverage_roles=[
+            CoverageRoleRead.model_validate(link.coverage_role)
+            for link in sorted(capability.coverage_roles, key=lambda item: item.coverage_role.name)
+        ],
+        related_techniques=[
+            CapabilityTechniqueMapRead(
+                technique_id=mapping.technique_id,
+                technique_code=mapping.technique.code,
+                technique_name=mapping.technique.name,
+                attack_url=f"https://attack.mitre.org/techniques/{mapping.technique.code.replace('.', '/')}/",
+                control_effect=mapping.control_effect,
+                coverage=mapping.coverage,
+            )
+            for mapping in sorted(capability.technique_maps, key=lambda item: (item.technique.code, item.control_effect))
+        ],
+    )
 
 
 def get_tool_type_docs(db: Session) -> list[DocsToolTypeRead]:
@@ -86,6 +118,7 @@ def get_tool_type_docs(db: Session) -> list[DocsToolTypeRead]:
 def get_capability_docs(db: Session) -> list[DocsCapabilityRead]:
     capabilities = db.execute(
         select(Capability).options(
+            joinedload(Capability.coverage_roles).joinedload(CapabilityCoverageRole.coverage_role),
             joinedload(Capability.technique_maps).joinedload(CapabilityTechniqueMap.technique),
             joinedload(Capability.tool_capabilities).joinedload(ToolCapability.tool),
         ).order_by(Capability.name)
@@ -113,7 +146,7 @@ def get_capability_docs(db: Session) -> list[DocsCapabilityRead]:
         )
         rows.append(
             DocsCapabilityRead(
-                capability=CapabilityRead.model_validate(capability),
+                capability=_serialize_capability(capability),
                 purpose=purpose,
                 typical_use_cases=related_techniques[:5],
                 tool_types=tool_types,
@@ -127,6 +160,8 @@ def get_capability_docs(db: Session) -> list[DocsCapabilityRead]:
 def get_mapping_docs(db: Session) -> DocsMappingRead:
     capabilities = db.execute(
         select(Capability).options(
+            joinedload(Capability.coverage_roles).joinedload(CapabilityCoverageRole.coverage_role),
+            joinedload(Capability.technique_maps).joinedload(CapabilityTechniqueMap.technique),
             joinedload(Capability.tool_capabilities).joinedload(ToolCapability.tool)
         ).order_by(Capability.name)
     ).unique().scalars().all()
@@ -146,7 +181,7 @@ def get_mapping_docs(db: Session) -> DocsMappingRead:
             DocsToolTypeMappingRead(
                 tool_type=tool_type,
                 capabilities=[
-                    CapabilityRead.model_validate(capability_by_id[capability_id])
+                    _serialize_capability(capability_by_id[capability_id])
                     for capability_id in sorted(
                         capability_ids,
                         key=lambda item: capability_by_id[item].name,
@@ -157,7 +192,7 @@ def get_mapping_docs(db: Session) -> DocsMappingRead:
         ],
         capability_mappings=[
             DocsCapabilityMappingRead(
-                capability=CapabilityRead.model_validate(capability),
+                capability=_serialize_capability(capability),
                 tool_types=sorted(capability_to_tool_types[capability.id]),
             )
             for capability in capabilities

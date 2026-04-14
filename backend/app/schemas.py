@@ -43,6 +43,22 @@ ScopeStatus = Literal["none", "partial", "full"]
 ScopeRelevance = Literal["primary", "secondary"]
 
 
+class VendorRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    name: str
+
+
+class CoverageRoleRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    code: str
+    name: str
+    description: str
+
+
 class CapabilityRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -56,6 +72,7 @@ class CapabilityRead(BaseModel):
     supported_by_response: bool
     requires_configuration: bool
     configuration_profile_type: str | None
+    coverage_roles: list[CoverageRoleRead] = []
     related_techniques: list["CapabilityTechniqueMapRead"] = []
 
 
@@ -291,8 +308,10 @@ class ToolRead(BaseModel):
 
     id: int
     name: str
+    vendor: VendorRead | None = None
     category: ToolCategory
     tool_types: list[ToolType]
+    tool_type_labels: list[str] = []
     tags: list[ToolTag]
     capabilities: list[ToolCapabilityRead]
     data_sources: list["ToolDataSourceRead"]
@@ -301,8 +320,10 @@ class ToolRead(BaseModel):
 
 class ToolCreate(BaseModel):
     name: str
+    vendor_name: str | None = None
     category: ToolCategory
     tool_types: list[ToolType]
+    tool_type_labels: list[str] = []
     tags: list[ToolTag] = []
 
 
@@ -323,8 +344,10 @@ class ToolCapabilityUpsert(BaseModel):
 class CapabilityImplementingToolRead(BaseModel):
     tool_id: int
     tool_name: str
+    vendor: VendorRead | None = None
     tool_category: ToolCategory
     tool_types: list[ToolType]
+    tool_type_labels: list[str] = []
     control_effect: ControlEffect
     implementation_level: ImplementationLevel
     confidence_source: ConfidenceSource

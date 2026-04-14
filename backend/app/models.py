@@ -4,6 +4,30 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.database import Base
 
 
+class Vendor(Base):
+    __tablename__ = "vendors"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    name: Mapped[str] = mapped_column(String(255), unique=True, nullable=False)
+
+    tools = relationship("Tool", back_populates="vendor")
+
+
+class CoverageRole(Base):
+    __tablename__ = "coverage_roles"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    code: Mapped[str] = mapped_column(String(50), unique=True, nullable=False)
+    name: Mapped[str] = mapped_column(String(100), unique=True, nullable=False)
+    description: Mapped[str] = mapped_column(Text, nullable=False, default="")
+
+    capability_links = relationship(
+        "CapabilityCoverageRole",
+        back_populates="coverage_role",
+        cascade="all, delete-orphan",
+    )
+
+
 class Capability(Base):
     __tablename__ = "capabilities"
 
@@ -18,6 +42,11 @@ class Capability(Base):
     requires_configuration: Mapped[bool] = mapped_column(default=False, nullable=False)
     configuration_profile_type: Mapped[str | None] = mapped_column(String(50), nullable=True)
 
+    coverage_roles = relationship(
+        "CapabilityCoverageRole",
+        back_populates="capability",
+        cascade="all, delete-orphan",
+    )
     technique_maps = relationship("CapabilityTechniqueMap", back_populates="capability", cascade="all, delete-orphan")
     tool_capabilities = relationship("ToolCapability", back_populates="capability", cascade="all, delete-orphan")
     tool_templates = relationship("ToolCapabilityTemplate", back_populates="capability", cascade="all, delete-orphan")
@@ -78,16 +107,31 @@ class CapabilityTechniqueMap(Base):
     technique = relationship("Technique", back_populates="capability_maps")
 
 
+class CapabilityCoverageRole(Base):
+    __tablename__ = "capability_coverage_roles"
+    __table_args__ = (UniqueConstraint("capability_id", "coverage_role_id", name="uq_capability_coverage_role"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    capability_id: Mapped[int] = mapped_column(ForeignKey("capabilities.id"), nullable=False, index=True)
+    coverage_role_id: Mapped[int] = mapped_column(ForeignKey("coverage_roles.id"), nullable=False, index=True)
+
+    capability = relationship("Capability", back_populates="coverage_roles")
+    coverage_role = relationship("CoverageRole", back_populates="capability_links")
+
+
 class Tool(Base):
     __tablename__ = "tools"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
     name: Mapped[str] = mapped_column(String(255), unique=True, nullable=False)
+    vendor_id: Mapped[int | None] = mapped_column(ForeignKey("vendors.id"), nullable=True, index=True)
     category: Mapped[str] = mapped_column(String(50), nullable=False, default="Other")
     # A tool can have multiple roles simultaneously (e.g. ["control", "assurance"]).
     tool_types: Mapped[list[str]] = mapped_column(JSON, nullable=False, default=lambda: ["control"])
+    tool_type_labels: Mapped[list[str]] = mapped_column(JSON, nullable=False, default=list)
     tags: Mapped[list[str]] = mapped_column(JSON, nullable=False, default=list)
 
+    vendor = relationship("Vendor", back_populates="tools")
     capabilities = relationship("ToolCapability", back_populates="tool", cascade="all, delete-orphan")
     data_sources = relationship("ToolDataSource", back_populates="tool", cascade="all, delete-orphan")
     response_actions = relationship("ToolResponseAction", back_populates="tool", cascade="all, delete-orphan")

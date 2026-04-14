@@ -53,10 +53,24 @@ export function listTools() {
   return request<Tool[]>("/tools");
 }
 
-export function createTool(name: string, category: ToolCategory, toolTypes: ToolType[], tags: string[]) {
+export function createTool(
+  name: string,
+  vendorName: string,
+  category: ToolCategory,
+  toolTypes: ToolType[],
+  toolTypeLabels: string[],
+  tags: string[],
+) {
   return request<Tool>("/tools", {
     method: "POST",
-    body: JSON.stringify({ name, category, tool_types: toolTypes, tags }),
+    body: JSON.stringify({
+      name,
+      vendor_name: vendorName.trim() || null,
+      category,
+      tool_types: toolTypes,
+      tool_type_labels: toolTypeLabels,
+      tags,
+    }),
   });
 }
 

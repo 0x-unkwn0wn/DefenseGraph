@@ -7,16 +7,21 @@ from app.models import (
     Capability,
     CapabilityAssessmentQuestion,
     CapabilityAssessmentTemplate,
+    CapabilityCoverageRole,
     CapabilityConfigurationQuestion,
     CapabilityRequiredDataSource,
     CapabilitySupportedResponseAction,
     CapabilityTechniqueMap,
+    CoverageRole,
     CoverageScope,
     DataSource,
     ResponseAction,
     Technique,
     TechniqueRelevantScope,
+    Tool,
+    ToolCapability,
     ToolCapabilityTemplate,
+    Vendor,
 )
 
 
@@ -267,6 +272,261 @@ CAPABILITIES = [
         "requires_configuration": True,
         "configuration_profile_type": "segmentation",
     },
+    {
+        "code": "CAP-101",
+        "name": "Asset Visibility",
+        "domain": "network",
+        "description": "Maintains accurate visibility over assets, connected devices, and their defensive state.",
+    },
+    {
+        "code": "CAP-102",
+        "name": "Access Control",
+        "domain": "network",
+        "description": "Enforces access decisions for users, devices, and network-connected assets.",
+    },
+    {
+        "code": "CAP-103",
+        "name": "Device Posture Assessment",
+        "domain": "endpoint",
+        "description": "Assesses device health, posture, and defensive readiness before granting access.",
+    },
+    {
+        "code": "CAP-104",
+        "name": "Data Loss Prevention",
+        "domain": "data",
+        "description": "Applies generic controls to detect, govern, and prevent unauthorized data movement.",
+    },
+    {
+        "code": "CAP-105",
+        "name": "Data Exfiltration Policy Enforcement",
+        "domain": "data",
+        "description": "Enforces explicit policy decisions to stop disallowed outbound data transfer paths.",
+        "requires_configuration": True,
+        "configuration_profile_type": "dlp_web",
+    },
+    {
+        "code": "CAP-106",
+        "name": "Sensitivity Labelling",
+        "domain": "data",
+        "description": "Assigns business sensitivity labels to data so downstream controls can act consistently.",
+    },
+    {
+        "code": "CAP-107",
+        "name": "Data Classification",
+        "domain": "data",
+        "description": "Classifies data content and context to support governance and protection decisions.",
+    },
+    {
+        "code": "CAP-108",
+        "name": "Encryption Enforcement",
+        "domain": "data",
+        "description": "Enforces encryption for protected data across storage, sharing, and transfer paths.",
+    },
+    {
+        "code": "CAP-109",
+        "name": "Rights Protection",
+        "domain": "data",
+        "description": "Restricts downstream use of protected content through rights and usage controls.",
+    },
+    {
+        "code": "CAP-110",
+        "name": "Layer 7 Filtering",
+        "domain": "network",
+        "description": "Inspects and filters application-layer requests and traffic for security enforcement.",
+        "requires_configuration": True,
+        "configuration_profile_type": "firewall",
+    },
+    {
+        "code": "CAP-111",
+        "name": "Device Compliance Enforcement",
+        "domain": "endpoint",
+        "description": "Enforces compliance conditions before devices can access protected resources.",
+    },
+    {
+        "code": "CAP-112",
+        "name": "Endpoint Policy Management",
+        "domain": "endpoint",
+        "description": "Applies and governs endpoint configuration policy at scale.",
+    },
+    {
+        "code": "CAP-113",
+        "name": "Configuration Hardening",
+        "domain": "endpoint",
+        "description": "Reduces attack surface by applying hardened baseline configurations.",
+    },
+    {
+        "code": "CAP-114",
+        "name": "Group Policy Enforcement",
+        "domain": "identity",
+        "description": "Applies and governs directory-backed configuration policy across managed systems.",
+    },
+    {
+        "code": "CAP-115",
+        "name": "AD Security Assessment",
+        "domain": "identity",
+        "description": "Assesses Active Directory configuration and exposure for security weaknesses.",
+    },
+    {
+        "code": "CAP-116",
+        "name": "AD Exposure Review",
+        "domain": "identity",
+        "description": "Reviews directory exposure paths, delegation risk, and identity attack surface.",
+    },
+    {
+        "code": "CAP-117",
+        "name": "Leaked Credential Monitoring",
+        "domain": "identity",
+        "description": "Monitors for externally exposed or breached credentials associated with the organization.",
+    },
+    {
+        "code": "CAP-118",
+        "name": "External Exposure Discovery",
+        "domain": "identity",
+        "description": "Discovers external identity and infrastructure exposure that increases attack opportunity.",
+    },
+    {
+        "code": "CAP-119",
+        "name": "Password Policy Enforcement",
+        "domain": "identity",
+        "description": "Enforces password policy quality, banned password use, and hygiene requirements.",
+    },
+    {
+        "code": "CAP-120",
+        "name": "Password Weakness Auditing",
+        "domain": "identity",
+        "description": "Audits the directory for weak, risky, or policy-violating password conditions.",
+    },
+    {
+        "code": "CAP-121",
+        "name": "Compromised Password Discovery",
+        "domain": "identity",
+        "description": "Detects password exposure or compromise patterns that require remediation.",
+    },
+    {
+        "code": "CAP-122",
+        "name": "Identity Lifecycle Automation",
+        "domain": "identity",
+        "description": "Automates account lifecycle administration and controlled identity workflows.",
+    },
+    {
+        "code": "CAP-123",
+        "name": "AD Administration Workflow",
+        "domain": "identity",
+        "description": "Automates repeatable administrative change workflows in Active Directory.",
+    },
+    {
+        "code": "CAP-124",
+        "name": "Privileged Access Management",
+        "domain": "identity",
+        "description": "Controls privileged access, elevation, and governance of sensitive administrative paths.",
+    },
+    {
+        "code": "CAP-125",
+        "name": "Secrets Protection",
+        "domain": "identity",
+        "description": "Protects privileged secrets, credentials, and sensitive authentication material.",
+    },
+    {
+        "code": "CAP-126",
+        "name": "MFA Enforcement",
+        "domain": "identity",
+        "description": "Requires multi-factor authentication on protected access paths and user journeys.",
+    },
+    {
+        "code": "CAP-127",
+        "name": "Strong Authentication",
+        "domain": "identity",
+        "description": "Raises assurance of authentication flows through stronger verification controls.",
+    },
+    {
+        "code": "CAP-128",
+        "name": "Identity Threat Detection",
+        "domain": "identity",
+        "description": "Detects identity-centric attack activity across authentication, accounts, and sessions.",
+        "requires_data_sources": True,
+        "supported_by_analytics": True,
+        "supported_by_response": True,
+    },
+    {
+        "code": "CAP-129",
+        "name": "Identity Risk Monitoring",
+        "domain": "identity",
+        "description": "Monitors identity risk indicators that may warrant containment or stronger controls.",
+        "requires_data_sources": True,
+        "supported_by_analytics": True,
+    },
+    {
+        "code": "CAP-130",
+        "name": "Vulnerability Scanning",
+        "domain": "network",
+        "description": "Assesses assets for exploitable vulnerabilities and security exposure.",
+    },
+    {
+        "code": "CAP-131",
+        "name": "Misconfiguration Assessment",
+        "domain": "network",
+        "description": "Assesses systems and services for insecure or risky configuration states.",
+    },
+    {
+        "code": "CAP-132",
+        "name": "AD Change Auditing",
+        "domain": "identity",
+        "description": "Audits directory changes that alter access, privilege, and security-relevant state.",
+        "requires_data_sources": True,
+        "supported_by_analytics": True,
+    },
+    {
+        "code": "CAP-133",
+        "name": "Identity Activity Monitoring",
+        "domain": "identity",
+        "description": "Monitors ongoing identity activity for behavioral and control anomalies.",
+        "requires_data_sources": True,
+        "supported_by_analytics": True,
+    },
+    {
+        "code": "CAP-134",
+        "name": "Security Event Correlation",
+        "domain": "analytics",
+        "description": "Correlates multiple security signals into higher-fidelity detection outcomes.",
+        "requires_data_sources": True,
+        "supported_by_analytics": True,
+    },
+    {
+        "code": "CAP-135",
+        "name": "Security Event Monitoring",
+        "domain": "analytics",
+        "description": "Monitors security telemetry continuously to surface actionable signals and alerts.",
+        "requires_data_sources": True,
+        "supported_by_analytics": True,
+    },
+]
+
+VENDORS = [
+    {"name": "Forescout"},
+    {"name": "Proofpoint"},
+    {"name": "Microsoft"},
+    {"name": "F5"},
+    {"name": "PingCastle"},
+    {"name": "FireCompass"},
+    {"name": "Specops"},
+    {"name": "ManageEngine"},
+    {"name": "CyberArk"},
+    {"name": "Swivel"},
+    {"name": "CrowdStrike"},
+    {"name": "Tenable"},
+    {"name": "IBM"},
+]
+
+COVERAGE_ROLES = [
+    {"code": "prevent", "name": "Prevent", "description": "Stops or blocks attacker activity before it succeeds."},
+    {"code": "harden", "name": "Harden", "description": "Reduces attack surface and weak default states."},
+    {"code": "detect", "name": "Detect", "description": "Identifies suspicious or malicious behavior."},
+    {"code": "alert", "name": "Alert", "description": "Raises actionable signals for responders and workflows."},
+    {"code": "assess", "name": "Assess", "description": "Measures exposure, posture, or security state."},
+    {"code": "audit", "name": "Audit", "description": "Records or reviews control-relevant changes and history."},
+    {"code": "govern", "name": "Govern", "description": "Applies policy, classification, or oversight decisions."},
+    {"code": "respond", "name": "Respond", "description": "Supports containment or operational follow-up."},
+    {"code": "automate", "name": "Automate", "description": "Automates security administration or response workflows."},
 ]
 
 DATA_SOURCES = [
@@ -332,6 +592,246 @@ COVERAGE_SCOPES = [
         "code": "public_facing_app",
         "name": "Public-Facing Application",
         "description": "Coverage that applies to internet-exposed applications and application delivery paths.",
+    },
+]
+
+CAPABILITY_COVERAGE_ROLE_ASSIGNMENTS = {
+    "Asset Visibility": ["detect", "assess"],
+    "Access Control": ["prevent", "govern"],
+    "Device Posture Assessment": ["assess", "detect"],
+    "Data Loss Prevention": ["prevent", "detect", "govern"],
+    "Data Exfiltration Policy Enforcement": ["prevent", "govern"],
+    "Sensitivity Labelling": ["govern", "prevent"],
+    "Data Classification": ["govern"],
+    "Encryption Enforcement": ["prevent", "govern"],
+    "Rights Protection": ["prevent", "govern"],
+    "Web Application Protection": ["prevent", "detect"],
+    "Layer 7 Filtering": ["prevent", "detect"],
+    "Device Compliance Enforcement": ["harden", "prevent", "govern"],
+    "Endpoint Policy Management": ["harden", "govern"],
+    "Configuration Hardening": ["harden", "prevent"],
+    "Group Policy Enforcement": ["harden", "prevent", "govern"],
+    "AD Security Assessment": ["assess", "audit"],
+    "AD Exposure Review": ["assess", "audit"],
+    "Leaked Credential Monitoring": ["detect", "alert", "assess"],
+    "External Exposure Discovery": ["detect", "assess"],
+    "Password Policy Enforcement": ["harden", "prevent"],
+    "Password Weakness Auditing": ["assess", "audit"],
+    "Compromised Password Discovery": ["detect", "assess"],
+    "Identity Lifecycle Automation": ["automate", "govern"],
+    "AD Administration Workflow": ["automate", "govern"],
+    "Privileged Access Management": ["prevent", "harden", "govern"],
+    "Secrets Protection": ["prevent", "govern"],
+    "MFA Enforcement": ["prevent", "harden"],
+    "Strong Authentication": ["prevent", "harden"],
+    "Identity Threat Detection": ["detect", "alert", "prevent"],
+    "Identity Risk Monitoring": ["detect", "alert"],
+    "Vulnerability Scanning": ["assess", "audit"],
+    "Misconfiguration Assessment": ["assess", "audit"],
+    "AD Change Auditing": ["audit", "detect", "alert"],
+    "Identity Activity Monitoring": ["detect", "alert", "audit"],
+    "Security Event Correlation": ["detect", "alert"],
+    "Security Event Monitoring": ["detect", "alert"],
+}
+
+TOOL_CAPABILITY_NORMALIZATION_RULES = [
+    {
+        "tool_name": "Forescout",
+        "vendor_name": "Forescout",
+        "category": "Other",
+        "tool_types": ["control"],
+        "tool_type_labels": ["NAC / Visibility Platform"],
+        "capabilities": [
+            ("Asset Visibility", "detect", "full"),
+            ("Access Control", "prevent", "full"),
+            ("Device Posture Assessment", "detect", "full"),
+        ],
+    },
+    {
+        "tool_name": "Proofpoint DLP",
+        "vendor_name": "Proofpoint",
+        "category": "DLP",
+        "tool_types": ["control"],
+        "tool_type_labels": ["DLP"],
+        "capabilities": [
+            ("Data Loss Prevention", "detect", "full"),
+            ("Data Exfiltration Policy Enforcement", "prevent", "full"),
+        ],
+    },
+    {
+        "tool_name": "Purview Labelling",
+        "vendor_name": "Microsoft",
+        "category": "Other",
+        "tool_types": ["control"],
+        "tool_type_labels": ["Information Protection"],
+        "capabilities": [
+            ("Sensitivity Labelling", "prevent", "full"),
+            ("Data Classification", "detect", "full"),
+        ],
+    },
+    {
+        "tool_name": "Purview Encryption",
+        "vendor_name": "Microsoft",
+        "category": "Other",
+        "tool_types": ["control"],
+        "tool_type_labels": ["Encryption"],
+        "capabilities": [
+            ("Encryption Enforcement", "prevent", "full"),
+            ("Rights Protection", "prevent", "full"),
+        ],
+    },
+    {
+        "tool_name": "F5 BIG-IP WAF",
+        "vendor_name": "F5",
+        "category": "Other",
+        "tool_types": ["control"],
+        "tool_type_labels": ["WAF / API Security"],
+        "capabilities": [
+            ("Web Application Protection", "prevent", "full"),
+            ("Layer 7 Filtering", "block", "full"),
+        ],
+    },
+    {
+        "tool_name": "MDM Intune",
+        "vendor_name": "Microsoft",
+        "category": "Other",
+        "tool_types": ["control"],
+        "tool_type_labels": ["UEM / MDM"],
+        "capabilities": [
+            ("Device Compliance Enforcement", "prevent", "full"),
+            ("Endpoint Policy Management", "prevent", "full"),
+        ],
+    },
+    {
+        "tool_name": "Group Policy Manager",
+        "vendor_name": "ManageEngine",
+        "category": "Identity",
+        "tool_types": ["control"],
+        "tool_type_labels": ["Policy Enforcement / Hardening"],
+        "capabilities": [
+            ("Configuration Hardening", "prevent", "full"),
+            ("Group Policy Enforcement", "prevent", "full"),
+        ],
+    },
+    {
+        "tool_name": "PingCastle",
+        "vendor_name": "PingCastle",
+        "category": "Identity",
+        "tool_types": ["control"],
+        "tool_type_labels": ["AD Security Assessment"],
+        "capabilities": [
+            ("AD Security Assessment", "detect", "full"),
+            ("AD Exposure Review", "detect", "full"),
+        ],
+    },
+    {
+        "tool_name": "FireCompass Leaked Credentials",
+        "vendor_name": "FireCompass",
+        "category": "Identity",
+        "tool_types": ["control"],
+        "tool_type_labels": ["Credential Exposure Monitoring"],
+        "capabilities": [
+            ("Leaked Credential Monitoring", "detect", "full"),
+            ("External Exposure Discovery", "detect", "full"),
+        ],
+    },
+    {
+        "tool_name": "Specops Password Policy",
+        "vendor_name": "Specops",
+        "category": "Identity",
+        "tool_types": ["control"],
+        "tool_type_labels": ["Password Policy Enforcement"],
+        "capabilities": [
+            ("Password Policy Enforcement", "prevent", "full"),
+        ],
+    },
+    {
+        "tool_name": "Specops Password Auditor",
+        "vendor_name": "Specops",
+        "category": "Identity",
+        "tool_types": ["control"],
+        "tool_type_labels": ["Password Audit / Assessment"],
+        "capabilities": [
+            ("Password Weakness Auditing", "detect", "full"),
+            ("Compromised Password Discovery", "detect", "full"),
+        ],
+    },
+    {
+        "tool_name": "ADManager Plus",
+        "vendor_name": "ManageEngine",
+        "category": "Identity",
+        "tool_types": ["control"],
+        "tool_type_labels": ["IAM Administration / Automation"],
+        "capabilities": [
+            ("Identity Lifecycle Automation", "prevent", "full"),
+            ("AD Administration Workflow", "prevent", "full"),
+        ],
+    },
+    {
+        "tool_name": "CyberArk",
+        "vendor_name": "CyberArk",
+        "category": "PAM",
+        "tool_types": ["control"],
+        "tool_type_labels": ["PAM"],
+        "capabilities": [
+            ("Privileged Access Management", "prevent", "full"),
+            ("Secrets Protection", "prevent", "full"),
+        ],
+    },
+    {
+        "tool_name": "Swivel",
+        "vendor_name": "Swivel",
+        "category": "Identity",
+        "tool_types": ["control"],
+        "tool_type_labels": ["MFA"],
+        "capabilities": [
+            ("MFA Enforcement", "prevent", "full"),
+            ("Strong Authentication", "prevent", "full"),
+        ],
+    },
+    {
+        "tool_name": "CrowdStrike Identity",
+        "vendor_name": "CrowdStrike",
+        "category": "Identity",
+        "tool_types": ["control", "analytics"],
+        "tool_type_labels": ["Identity Threat Protection"],
+        "capabilities": [
+            ("Identity Threat Detection", "detect", "full"),
+            ("Identity Risk Monitoring", "detect", "full"),
+        ],
+    },
+    {
+        "tool_name": "Tenable / Nessus",
+        "vendor_name": "Tenable",
+        "category": "Other",
+        "tool_types": ["control"],
+        "tool_type_labels": ["Vulnerability Assessment"],
+        "capabilities": [
+            ("Vulnerability Scanning", "detect", "full"),
+            ("Misconfiguration Assessment", "detect", "full"),
+        ],
+    },
+    {
+        "tool_name": "ADAudit Plus",
+        "vendor_name": "ManageEngine",
+        "category": "Identity",
+        "tool_types": ["control", "analytics"],
+        "tool_type_labels": ["AD Audit / Monitoring"],
+        "capabilities": [
+            ("AD Change Auditing", "detect", "full"),
+            ("Identity Activity Monitoring", "detect", "full"),
+        ],
+    },
+    {
+        "tool_name": "QRadar",
+        "vendor_name": "IBM",
+        "category": "Security Analytics",
+        "tool_types": ["analytics"],
+        "tool_type_labels": ["SIEM"],
+        "capabilities": [
+            ("Security Event Correlation", "detect", "full"),
+            ("Security Event Monitoring", "detect", "full"),
+        ],
     },
 ]
 
@@ -1320,11 +1820,52 @@ TOOL_CAPABILITY_TEMPLATES = [
     },
 ]
 
+CAPABILITY_TECHNIQUE_MAPS.extend(
+    [
+        ("CAP-104", "T1041", "detect", "partial"),
+        ("CAP-104", "T1567", "detect", "partial"),
+        ("CAP-104", "T1537", "detect", "partial"),
+        ("CAP-105", "T1041", "prevent", "partial"),
+        ("CAP-105", "T1567", "prevent", "partial"),
+        ("CAP-105", "T1537", "prevent", "partial"),
+        ("CAP-117", "T1078", "detect", "partial"),
+        ("CAP-117", "T1110", "detect", "partial"),
+        ("CAP-124", "T1078", "prevent", "partial"),
+        ("CAP-124", "T1550", "prevent", "partial"),
+        ("CAP-125", "T1003", "prevent", "partial"),
+        ("CAP-126", "T1078", "prevent", "partial"),
+        ("CAP-126", "T1133", "prevent", "partial"),
+        ("CAP-126", "T1110", "prevent", "partial"),
+        ("CAP-127", "T1078", "prevent", "partial"),
+        ("CAP-128", "T1078", "detect", "full"),
+        ("CAP-128", "T1550", "detect", "full"),
+        ("CAP-128", "T1558", "detect", "full"),
+        ("CAP-128", "T1110", "detect", "full"),
+        ("CAP-129", "T1078", "detect", "partial"),
+        ("CAP-129", "T1098", "detect", "partial"),
+        ("CAP-132", "T1098", "detect", "full"),
+        ("CAP-132", "T1484", "detect", "full"),
+        ("CAP-132", "T1136", "detect", "full"),
+        ("CAP-133", "T1078", "detect", "partial"),
+        ("CAP-133", "T1133", "detect", "partial"),
+        ("CAP-133", "T1087", "detect", "partial"),
+        ("CAP-134", "T1078", "detect", "partial"),
+        ("CAP-134", "T1110", "detect", "partial"),
+        ("CAP-134", "T1071", "detect", "partial"),
+        ("CAP-134", "T1041", "detect", "partial"),
+        ("CAP-135", "T1078", "detect", "partial"),
+        ("CAP-135", "T1071", "detect", "partial"),
+        ("CAP-135", "T1041", "detect", "partial"),
+    ]
+)
+
 CAPABILITY_CODE_SET = {capability["code"] for capability in CAPABILITIES}
 TECHNIQUE_CODE_SET = {technique["code"] for technique in TECHNIQUES}
 DATA_SOURCE_CODE_SET = {data_source["code"] for data_source in DATA_SOURCES}
 RESPONSE_ACTION_CODE_SET = {action["code"] for action in RESPONSE_ACTIONS}
 COVERAGE_SCOPE_CODE_SET = {scope["code"] for scope in COVERAGE_SCOPES}
+VENDOR_NAME_SET = {vendor["name"] for vendor in VENDORS}
+COVERAGE_ROLE_CODE_SET = {role["code"] for role in COVERAGE_ROLES}
 
 LEGACY_CAPABILITY_MAP = {
     "CAP-001": ("CAP-001", "detect"),
@@ -1361,6 +1902,20 @@ def _upsert_reference_rows(db: Session, model, rows: list[dict[str, object]]) ->
     }
     for row in rows:
         existing = existing_rows.get(row["code"])
+        if existing is None:
+            db.add(model(**row))
+            continue
+        for field, value in row.items():
+            setattr(existing, field, value)
+
+
+def _upsert_named_rows(db: Session, model, rows: list[dict[str, object]]) -> None:
+    existing_rows = {
+        row.name: row
+        for row in db.scalars(select(model)).all()
+    }
+    for row in rows:
+        existing = existing_rows.get(row["name"])
         if existing is None:
             db.add(model(**row))
             continue
@@ -1439,8 +1994,9 @@ def _apply_named_capability_mapping_patches(db: Session) -> None:
     if added_count:
         db.commit()
 
-    for line in summary_lines:
-        print(line)
+    if added_count or any("not found" in line for line in summary_lines):
+        for line in summary_lines:
+            print(line)
 
 
 def sync_reference_data(db: Session) -> None:
@@ -1449,6 +2005,8 @@ def sync_reference_data(db: Session) -> None:
     data_source_codes = {code for (code,) in db.execute(select(DataSource.code)).all()}
     response_action_codes = {code for (code,) in db.execute(select(ResponseAction.code)).all()}
     coverage_scope_codes = {code for (code,) in db.execute(select(CoverageScope.code)).all()}
+    vendor_names = {name for (name,) in db.execute(select(Vendor.name)).all()}
+    coverage_role_codes = {code for (code,) in db.execute(select(CoverageRole.code)).all()}
 
     if (
         capability_codes == CAPABILITY_CODE_SET
@@ -1456,6 +2014,8 @@ def sync_reference_data(db: Session) -> None:
         and data_source_codes == DATA_SOURCE_CODE_SET
         and response_action_codes == RESPONSE_ACTION_CODE_SET
         and coverage_scope_codes == COVERAGE_SCOPE_CODE_SET
+        and VENDOR_NAME_SET.issubset(vendor_names)
+        and coverage_role_codes == COVERAGE_ROLE_CODE_SET
     ):
         return
 
@@ -1464,6 +2024,8 @@ def sync_reference_data(db: Session) -> None:
     _upsert_reference_rows(db, DataSource, DATA_SOURCES)
     _upsert_reference_rows(db, ResponseAction, RESPONSE_ACTIONS)
     _upsert_reference_rows(db, CoverageScope, COVERAGE_SCOPES)
+    _upsert_named_rows(db, Vendor, VENDORS)
+    _upsert_reference_rows(db, CoverageRole, COVERAGE_ROLES)
     db.commit()
 
     seed_reference_data(db)
@@ -1490,12 +2052,22 @@ def seed_reference_data(db: Session) -> None:
         db.add_all(CoverageScope(**scope) for scope in COVERAGE_SCOPES)
         db.commit()
 
+    if not db.scalar(select(Vendor.id).limit(1)):
+        db.add_all(Vendor(**vendor) for vendor in VENDORS)
+        db.commit()
+
+    if not db.scalar(select(CoverageRole.id).limit(1)):
+        db.add_all(CoverageRole(**role) for role in COVERAGE_ROLES)
+        db.commit()
+
     _seed_capability_technique_maps(db)
     _seed_technique_relevant_scopes(db)
     _seed_capability_dependencies(db)
+    _seed_capability_coverage_roles(db)
     _seed_assessment_templates(db)
     _seed_configuration_questions(db)
     _seed_tool_capability_templates(db)
+    _normalize_known_tools(db)
 
 
 def _seed_capability_technique_maps(db: Session) -> None:
@@ -1672,6 +2244,97 @@ def _seed_capability_dependencies(db: Session) -> None:
             for capability_code, action_code in CAPABILITY_SUPPORTED_RESPONSE_ACTIONS
         )
         db.commit()
+
+
+def _seed_capability_coverage_roles(db: Session) -> None:
+    capabilities_by_name = {capability.name: capability for capability in db.scalars(select(Capability)).all()}
+    roles_by_code = {role.code: role for role in db.scalars(select(CoverageRole)).all()}
+    existing_links = {
+        (link.capability_id, link.coverage_role_id)
+        for link in db.scalars(select(CapabilityCoverageRole)).all()
+    }
+
+    added = False
+    for capability_name, role_codes in CAPABILITY_COVERAGE_ROLE_ASSIGNMENTS.items():
+        capability = capabilities_by_name.get(capability_name)
+        if capability is None:
+            continue
+        for role_code in role_codes:
+            role = roles_by_code.get(role_code)
+            if role is None:
+                continue
+            link_key = (capability.id, role.id)
+            if link_key in existing_links:
+                continue
+            db.add(
+                CapabilityCoverageRole(
+                    capability_id=capability.id,
+                    coverage_role_id=role.id,
+                )
+            )
+            existing_links.add(link_key)
+            added = True
+
+    if added:
+        db.commit()
+
+
+def _normalize_known_tools(db: Session) -> None:
+    tools_by_name = {tool.name: tool for tool in db.scalars(select(Tool)).all()}
+    vendors_by_name = {vendor.name: vendor for vendor in db.scalars(select(Vendor)).all()}
+    capabilities_by_name = {capability.name: capability for capability in db.scalars(select(Capability)).all()}
+
+    for rule in TOOL_CAPABILITY_NORMALIZATION_RULES:
+        tool = tools_by_name.get(rule["tool_name"])
+        if tool is None:
+            continue
+
+        vendor = vendors_by_name.get(rule["vendor_name"])
+        if vendor is not None and tool.vendor_id != vendor.id:
+            tool.vendor_id = vendor.id
+
+        if tool.category == "Other" and rule["category"] != "Other":
+            tool.category = rule["category"]
+
+        tool.tool_types = list(dict.fromkeys([*tool.tool_types, *rule["tool_types"]]))
+        tool.tool_type_labels = list(dict.fromkeys([*tool.tool_type_labels, *rule["tool_type_labels"]]))
+
+        assignments_by_capability_id = {
+            assignment.capability_id: assignment
+            for assignment in tool.capabilities
+        }
+        linked_messages: list[str] = []
+        skipped_messages: list[str] = []
+
+        for capability_name, control_effect, implementation_level in rule["capabilities"]:
+            capability = capabilities_by_name.get(capability_name)
+            if capability is None:
+                skipped_messages.append(f"{capability_name} (missing capability)")
+                continue
+
+            assignment = assignments_by_capability_id.get(capability.id)
+            if assignment is None:
+                db.add(
+                    ToolCapability(
+                        tool_id=tool.id,
+                        capability_id=capability.id,
+                        control_effect=control_effect,
+                        implementation_level=implementation_level,
+                    )
+                )
+                linked_messages.append(f"{capability_name} -> {control_effect}/{implementation_level}")
+            else:
+                skipped_messages.append(f"{capability_name} (already linked)")
+
+        db.flush()
+        print(
+            "[tool-normalization] "
+            f"{tool.name}"
+            + (f" | linked: {', '.join(linked_messages)}" if linked_messages else "")
+            + (f" | skipped: {', '.join(skipped_messages)}" if skipped_messages else "")
+        )
+
+    db.commit()
 
 
 def _seed_tool_capability_templates(db: Session) -> None:

@@ -60,7 +60,20 @@ export interface Capability {
   supported_by_response: boolean;
   requires_configuration: boolean;
   configuration_profile_type: string | null;
+  coverage_roles?: CoverageRole[];
   related_techniques?: CapabilityTechniqueLink[];
+}
+
+export interface Vendor {
+  id: number;
+  name: string;
+}
+
+export interface CoverageRole {
+  id: number;
+  code: string;
+  name: string;
+  description: string;
 }
 
 export interface DataSource {
@@ -195,8 +208,10 @@ export interface ToolCapability {
 export interface Tool {
   id: number;
   name: string;
+  vendor?: Vendor | null;
   category: ToolCategory;
   tool_types: ToolType[];
+  tool_type_labels?: string[];
   tags: ToolTag[];
   capabilities: ToolCapability[];
   data_sources: ToolDataSource[];
@@ -223,8 +238,10 @@ export interface ToolCapabilityDetail {
 export interface CapabilityImplementingTool {
   tool_id: number;
   tool_name: string;
+  vendor?: Vendor | null;
   tool_category: ToolCategory;
   tool_types: ToolType[];
+  tool_type_labels?: string[];
   control_effect: ControlEffect;
   implementation_level: ImplementationLevel;
   confidence_source: ConfidenceSource;

@@ -24,6 +24,7 @@ from app.seed import (
     CORE_TECHNIQUE_CODES,
     EXTENDED_TECHNIQUE_CODES,
     TECHNIQUES,
+    seed_reference_data,
     validate_attack_catalog,
 )
 
@@ -684,6 +685,31 @@ class DefenseGraphConfidenceTests(unittest.TestCase):
             item for item in mapping_rows.json()["capability_mappings"] if item["capability"]["code"] == "CAP-009"
         )
         self.assertIn("analytics", capability_mapping["tool_types"])
+
+    def test_generic_capability_roles_are_exposed(self):
+        capabilities = self.client.get("/capabilities").json()
+        correlation = next(item for item in capabilities if item["code"] == "CAP-134")
+        self.assertEqual(correlation["name"], "Security Event Correlation")
+        self.assertEqual(
+            [role["code"] for role in correlation["coverage_roles"]],
+            ["alert", "detect"],
+        )
+
+    def test_known_tool_normalization_enriches_existing_tools_without_duplicates(self):
+        tool = self._create_tool("QRadar", "Security Analytics", "analytics")
+
+        with self.session_local() as db:
+            seed_reference_data(db)
+            seed_reference_data(db)
+
+        payload = self.client.get(f"/tools/{tool['id']}").json()
+        capability_ids = sorted(item["capability_id"] for item in payload["capabilities"])
+
+        self.assertEqual(payload["vendor"]["name"], "IBM")
+        self.assertIn("SIEM", payload["tool_type_labels"])
+        self.assertIn("analytics", payload["tool_types"])
+        self.assertEqual(capability_ids.count(self._find_capability("CAP-134")["id"]), 1)
+        self.assertEqual(capability_ids.count(self._find_capability("CAP-135")["id"]), 1)
 
     def test_migrate_legacy_database_preserves_existing_records_and_creates_backup(self):
         temp_dir = tempfile.TemporaryDirectory()

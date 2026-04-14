@@ -153,8 +153,10 @@ export default function App() {
 
   async function handleCreateTool(
     name: string,
+    vendorName: string,
     category: ToolCategory,
     toolTypes: ToolType[],
+    toolTypeLabels: string[],
     tags: ToolTag[],
     selectedTemplates: Array<{
       template: ToolCapabilityTemplate;
@@ -163,7 +165,7 @@ export default function App() {
   ) {
     setError(null);
     try {
-      const tool = await createTool(name, category, toolTypes, tags);
+      const tool = await createTool(name, vendorName, category, toolTypes, toolTypeLabels, tags);
       if (selectedTemplates.length > 0) {
         await applyToolTemplates(
           tool.id,
