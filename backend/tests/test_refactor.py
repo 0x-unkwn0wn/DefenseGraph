@@ -1,0 +1,629 @@
+import sys
+import tempfile
+import unittest
+from pathlib import Path
+
+from fastapi.testclient import TestClient
+from sqlalchemy import create_engine, select
+from sqlalchemy.orm import sessionmaker
+
+BACKEND_DIR = Path(__file__).resolve().parents[1]
+if str(BACKEND_DIR) not in sys.path:
+    sys.path.insert(0, str(BACKEND_DIR))
+
+from app.database import Base
+from app.main import app
+import app.main as main_module
+from app.models import CapabilityTechniqueMap, Technique
+from app.seed import (
+    ATTACK_TECHNIQUE_CATALOG,
+    CAPABILITY_TECHNIQUE_MAPS,
+    CORE_TECHNIQUE_CODES,
+    EXTENDED_TECHNIQUE_CODES,
+    TECHNIQUES,
+    validate_attack_catalog,
+)
+
+
+class DefenseGraphConfidenceTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.temp_dir = tempfile.TemporaryDirectory()
+        cls.db_path = Path(cls.temp_dir.name) / "test.db"
+        cls.engine = create_engine(
+            f"sqlite:///{cls.db_path}",
+            connect_args={"check_same_thread": False},
+        )
+        cls.session_local = sessionmaker(
+            autocommit=False,
+            autoflush=False,
+            bind=cls.engine,
+        )
+        cls.original_engine = main_module.engine
+        cls.original_session_local = main_module.SessionLocal
+        cls.original_migrate = main_module.migrate_legacy_database
+
+        main_module.engine = cls.engine
+        main_module.SessionLocal = cls.session_local
+        main_module.migrate_legacy_database = lambda _: None
+
+    @classmethod
+    def tearDownClass(cls):
+        main_module.engine = cls.original_engine
+        main_module.SessionLocal = cls.original_session_local
+        main_module.migrate_legacy_database = cls.original_migrate
+        cls.engine.dispose()
+        try:
+            cls.temp_dir.cleanup()
+        except PermissionError:
+            pass
+
+    def setUp(self):
+        Base.metadata.drop_all(bind=self.engine)
+        Base.metadata.create_all(bind=self.engine)
+        self.client_context = TestClient(app)
+        self.client = self.client_context.__enter__()
+
+    def tearDown(self):
+        self.client_context.__exit__(None, None, None)
+
+    def _create_tool(self, name: str, category: str = "Other", tool_type: str | None = None) -> dict:
+        resolved_tool_type = (
+            tool_type
+            or ("analytics" if category == "Security Analytics" else "response" if category == "SOAR" else "control")
+        )
+        response = self.client.post(
+            "/tools",
+            json={"name": name, "category": category, "tool_type": resolved_tool_type, "tags": []},
+        )
+        self.assertEqual(response.status_code, 201)
+        return response.json()
+
+    def _find_capability(self, code: str) -> dict:
+        capability_rows = self.client.get("/capabilities").json()
+        return next(item for item in capability_rows if item["code"] == code)
+
+    def _assign_capability(
+        self,
+        tool_id: int,
+        capability_id: int,
+        control_effect: str,
+        implementation_level: str,
+    ) -> dict:
+        response = self.client.post(
+            f"/tools/{tool_id}/capabilities",
+            json={
+                "capability_id": capability_id,
+                "control_effect": control_effect,
+                "implementation_level": implementation_level,
+            },
+        )
+        self.assertEqual(response.status_code, 200)
+        return response.json()
+
+    def _find_data_source(self, code: str) -> dict:
+        rows = self.client.get("/data-sources").json()
+        return next(item for item in rows if item["code"] == code)
+
+    def _find_response_action(self, code: str) -> dict:
+        rows = self.client.get("/response-actions").json()
+        return next(item for item in rows if item["code"] == code)
+
+    def _find_scope(self, code: str) -> dict:
+        rows = self.client.get("/coverage-scopes").json()
+        return next(item for item in rows if item["code"] == code)
+
+    def _set_scopes(
+        self,
+        tool_id: int,
+        capability_id: int,
+        scope_entries: list[tuple[str, str, str]],
+    ) -> dict:
+        payload = {
+            "scopes": [
+                {
+                    "coverage_scope_id": self._find_scope(scope_code)["id"],
+                    "status": status,
+                    "notes": notes,
+                }
+                for scope_code, status, notes in scope_entries
+            ]
+        }
+        response = self.client.post(
+            f"/tools/{tool_id}/capabilities/{capability_id}/scopes",
+            json=payload,
+        )
+        self.assertEqual(response.status_code, 200)
+        return response.json()
+
+    def _verify_configuration(
+        self,
+        tool_id: int,
+        capability_id: int,
+        answers: list[str],
+        notes: str = "",
+    ) -> dict:
+        profile_response = self.client.post(
+            f"/tools/{tool_id}/capabilities/{capability_id}/configuration-profile",
+            json={"notes": notes},
+        )
+        self.assertEqual(profile_response.status_code, 200)
+        questions = profile_response.json()["configuration_questions"]
+        submission = {
+            "answers": [
+                {"question_id": question["id"], "answer": answer}
+                for question, answer in zip(questions, answers, strict=False)
+            ]
+        }
+        answer_response = self.client.post(
+            f"/tools/{tool_id}/capabilities/{capability_id}/configuration-answers",
+            json=submission,
+        )
+        self.assertEqual(answer_response.status_code, 200)
+        return answer_response.json()
+
+    def test_tool_capability_defaults_to_declared_low_confidence(self):
+        tool = self._create_tool("Email Security", "Email")
+        capability = self._find_capability("CAP-004")
+        response = self._assign_capability(tool["id"], capability["id"], "prevent", "full")
+
+        assignment = next(
+            item
+            for item in response["capabilities"]
+            if item["capability_id"] == capability["id"]
+        )
+        self.assertEqual(assignment["confidence_source"], "declared")
+        self.assertEqual(assignment["confidence_level"], "low")
+
+    def test_requires_configuration_without_profile_stays_low_and_unconfigured(self):
+        tool = self._create_tool("Cloud Edge", "Other")
+        capability = self._find_capability("CAP-031")
+        self._assign_capability(tool["id"], capability["id"], "prevent", "full")
+
+        detail = self.client.get(f"/tools/{tool['id']}/capabilities/{capability['id']}").json()
+        self.assertEqual(detail["confidence"]["confidence_level"], "low")
+        self.assertEqual(detail["configuration_summary"]["configuration_status"], "unknown")
+
+        row = next(
+            item for item in self.client.get("/coverage").json() if item["technique_code"] == "T1190"
+        )
+        self.assertTrue(row["is_gap_unconfigured_control"])
+
+    def test_configuration_not_enabled_removes_effective_contribution(self):
+        tool = self._create_tool("Cloud Edge Disabled", "Other")
+        capability = self._find_capability("CAP-031")
+        self._assign_capability(tool["id"], capability["id"], "prevent", "full")
+        self._set_scopes(tool["id"], capability["id"], [("public_facing_app", "full", "Internet-facing apps only")])
+        self._verify_configuration(tool["id"], capability["id"], ["no", "no", "no", "no"])
+
+        row = next(
+            item for item in self.client.get("/coverage").json() if item["technique_code"] == "T1190"
+        )
+        self.assertEqual(row["effective_control_effect"], "none")
+        self.assertTrue(row["is_gap_unconfigured_control"])
+
+    def test_configuration_partially_enabled_degrades_to_partial_gap(self):
+        tool = self._create_tool("Segmented Network", "Other")
+        capability = self._find_capability("CAP-032")
+        self._assign_capability(tool["id"], capability["id"], "block", "full")
+        self._set_scopes(tool["id"], capability["id"], [("server", "full", "Server VLANs enforced")])
+        detail = self._verify_configuration(tool["id"], capability["id"], ["yes", "partial", "no"])
+
+        self.assertEqual(detail["configuration_summary"]["configuration_status"], "partially_enabled")
+        self.assertEqual(detail["confidence"]["confidence_level"], "low")
+
+        row = next(
+            item for item in self.client.get("/coverage").json() if item["technique_code"] == "T1021"
+        )
+        self.assertEqual(row["effective_control_effect"], "block")
+        self.assertTrue(row["is_gap_partial"])
+        self.assertTrue(row["is_gap_partially_configured_control"])
+
+    def test_configuration_enabled_contributes_normally(self):
+        tool = self._create_tool("F5 WAF", "Other")
+        capability = self._find_capability("CAP-031")
+        self._assign_capability(tool["id"], capability["id"], "prevent", "full")
+        self._set_scopes(tool["id"], capability["id"], [("public_facing_app", "full", "WAF applied to all apps")])
+        detail = self._verify_configuration(tool["id"], capability["id"], ["yes", "yes", "yes", "yes"])
+
+        self.assertEqual(detail["configuration_summary"]["configuration_status"], "enabled")
+
+        row = next(
+            item for item in self.client.get("/coverage").json() if item["technique_code"] == "T1190"
+        )
+        self.assertEqual(row["effective_control_effect"], "prevent")
+        self.assertFalse(row["is_gap_unconfigured_control"])
+        self.assertFalse(row["is_gap_partially_configured_control"])
+
+    def test_confidence_transitions_from_declared_to_assessed_to_evidenced(self):
+        tool = self._create_tool("Identity Monitor", "Identity")
+        capability = self._find_capability("CAP-009")
+        self._assign_capability(tool["id"], capability["id"], "detect", "full")
+
+        initial_detail = self.client.get(f"/tools/{tool['id']}/capabilities/{capability['id']}")
+        self.assertEqual(initial_detail.status_code, 200)
+        self.assertEqual(initial_detail.json()["confidence"]["confidence_source"], "declared")
+        self.assertEqual(initial_detail.json()["confidence"]["confidence_level"], "low")
+
+        template = self.client.get(f"/capabilities/{capability['id']}/assessment-template").json()
+        answers_payload = {
+            "answers": [
+                {"question_id": question["id"], "answer": "yes"}
+                for question in template["questions"][:3]
+            ]
+            + [{"question_id": template["questions"][3]["id"], "answer": "partial"}]
+        }
+        assessed_detail = self.client.post(
+            f"/tools/{tool['id']}/capabilities/{capability['id']}/assessment-answers",
+            json=answers_payload,
+        )
+        self.assertEqual(assessed_detail.status_code, 200)
+        self.assertEqual(assessed_detail.json()["confidence"]["confidence_source"], "assessed")
+        self.assertEqual(assessed_detail.json()["confidence"]["confidence_level"], "high")
+
+        evidenced_detail = self.client.post(
+            f"/tools/{tool['id']}/capabilities/{capability['id']}/evidence",
+            json={
+                "title": "Gateway policy export",
+                "evidence_type": "config",
+                "note": "Identity monitoring rules enabled",
+                "file_name": "policy-export.json",
+                "recorded_at": "2026-04-13",
+            },
+        )
+        self.assertEqual(evidenced_detail.status_code, 200)
+        self.assertEqual(evidenced_detail.json()["confidence"]["confidence_source"], "evidenced")
+        self.assertEqual(evidenced_detail.json()["confidence"]["evidence_count"], 1)
+
+    def test_coverage_returns_new_gap_flags_and_confidence(self):
+        tool = self._create_tool("DNS Resolver", "DNS")
+        capability = self._find_capability("CAP-006")
+        self._assign_capability(tool["id"], capability["id"], "detect", "full")
+        self._set_scopes(tool["id"], capability["id"], [("endpoint_user_device", "full", "Managed endpoints resolve through DNS control")])
+
+        dns_row = next(
+            item
+            for item in self.client.get("/coverage").json()
+            if item["technique_code"] == "T1071.004"
+        )
+        self.assertEqual(dns_row["effective_control_effect"], "detect")
+        self.assertEqual(dns_row["coverage_status"], "detect_only")
+        self.assertTrue(dns_row["is_gap_detect_only"])
+        self.assertTrue(dns_row["is_gap_low_confidence"])
+        self.assertTrue(dns_row["is_gap_single_tool_dependency"])
+
+    def test_coverage_marks_partial_when_effective_path_is_partial(self):
+        tool = self._create_tool("Remote Access Control", "SASE")
+        capability = self._find_capability("CAP-012")
+        self._assign_capability(tool["id"], capability["id"], "block", "full")
+        self._set_scopes(tool["id"], capability["id"], [("server", "partial", "Server remote access partially enforced")])
+
+        remote_services_row = next(
+            item
+            for item in self.client.get("/coverage").json()
+            if item["technique_code"] == "T1021"
+        )
+        self.assertEqual(remote_services_row["effective_control_effect"], "block")
+        self.assertEqual(remote_services_row["coverage_status"], "partial")
+        self.assertTrue(remote_services_row["is_gap_partial"])
+
+    def test_analytics_tool_without_required_data_sources_does_not_claim_coverage(self):
+        tool = self._create_tool("QRadar", "Security Analytics", "analytics")
+        capability = self._find_capability("CAP-009")
+        self._assign_capability(tool["id"], capability["id"], "detect", "full")
+        self._set_scopes(tool["id"], capability["id"], [("identity", "full", "Identity analytics use case")])
+
+        row = next(
+            item
+            for item in self.client.get("/coverage").json()
+            if item["technique_code"] == "T1078"
+        )
+        self.assertEqual(row["effective_control_effect"], "none")
+        self.assertTrue(row["is_gap_missing_data_sources"])
+
+    def test_analytics_tool_with_required_data_sources_contributes_detect_coverage(self):
+        tool = self._create_tool("QRadar", "Security Analytics", "analytics")
+        capability = self._find_capability("CAP-009")
+        data_source = self._find_data_source("DS-001")
+        endpoint_data = self._find_data_source("DS-002")
+        self.client.post(
+            f"/tools/{tool['id']}/data-sources",
+            json={"data_source_id": data_source["id"], "ingestion_status": "full", "notes": ""},
+        )
+        self.client.post(
+            f"/tools/{tool['id']}/data-sources",
+            json={"data_source_id": endpoint_data["id"], "ingestion_status": "full", "notes": ""},
+        )
+        self._assign_capability(tool["id"], capability["id"], "detect", "full")
+        self._set_scopes(tool["id"], capability["id"], [("identity", "full", "Identity controls covered")])
+
+        row = next(
+            item
+            for item in self.client.get("/coverage").json()
+            if item["technique_code"] == "T1078"
+        )
+        self.assertEqual(row["effective_control_effect"], "detect")
+        self.assertFalse(row["is_gap_missing_data_sources"])
+        self.assertTrue(any(item["tool_type"] == "analytics" for item in row["contributing_tools"]))
+
+    def test_response_tool_without_upstream_detection_does_not_create_coverage(self):
+        tool = self._create_tool("XSOAR", "SOAR", "response")
+        action = self._find_response_action("RA-002")
+        self.client.post(
+            f"/tools/{tool['id']}/response-actions",
+            json={"response_action_id": action["id"], "implementation_level": "full", "notes": ""},
+        )
+
+        row = next(
+            item
+            for item in self.client.get("/coverage").json()
+            if item["technique_code"] == "T1078"
+        )
+        self.assertEqual(row["effective_control_effect"], "none")
+        self.assertTrue(row["is_gap_response_without_detection"])
+
+    def test_detection_plus_response_marks_response_enabled(self):
+        detect_tool = self._create_tool("Identity Analytics", "Security Analytics", "analytics")
+        capability = self._find_capability("CAP-009")
+        ad_logs = self._find_data_source("DS-001")
+        self.client.post(
+            f"/tools/{detect_tool['id']}/data-sources",
+            json={"data_source_id": ad_logs["id"], "ingestion_status": "full", "notes": ""},
+        )
+        self._assign_capability(detect_tool["id"], capability["id"], "detect", "full")
+        self._set_scopes(detect_tool["id"], capability["id"], [("identity", "full", "Identity telemetry path")])
+
+        response_tool = self._create_tool("XSOAR", "SOAR", "response")
+        action = self._find_response_action("RA-002")
+        self.client.post(
+            f"/tools/{response_tool['id']}/response-actions",
+            json={"response_action_id": action["id"], "implementation_level": "full", "notes": ""},
+        )
+
+        row = next(
+            item
+            for item in self.client.get("/coverage").json()
+            if item["technique_code"] == "T1078"
+        )
+        self.assertEqual(row["effective_control_effect"], "detect")
+        self.assertEqual(row["effective_outcome"], "detect_with_response")
+        self.assertTrue(row["response_enabled"])
+        self.assertTrue(any(action_row["tool_name"] == "XSOAR" for action_row in row["response_actions"]))
+
+    def test_curated_attack_subset_contains_exactly_thirty_four_mapped_techniques(self):
+        seeded_codes = [technique["code"] for technique in TECHNIQUES]
+        self.assertEqual(len(seeded_codes), 34)
+        self.assertEqual(len(set(seeded_codes)), 34)
+
+        with self.session_local() as db:
+            technique_codes = db.scalars(select(Technique.code).order_by(Technique.code)).all()
+            mapped_codes = {
+                code
+                for (code,) in db.execute(
+                    select(Technique.code)
+                    .join(CapabilityTechniqueMap, CapabilityTechniqueMap.technique_id == Technique.id)
+                    .distinct()
+                ).all()
+            }
+
+        self.assertEqual(len(technique_codes), 34)
+        self.assertEqual(set(technique_codes), set(seeded_codes))
+        self.assertEqual(mapped_codes, set(seeded_codes))
+        self.assertEqual(
+            {technique_code for _, technique_code, _, _ in CAPABILITY_TECHNIQUE_MAPS},
+            set(seeded_codes),
+        )
+        self.assertEqual(len(CORE_TECHNIQUE_CODES), 20)
+        self.assertEqual(len(EXTENDED_TECHNIQUE_CODES), 14)
+
+    def test_attack_catalog_validation_rejects_duplicate_technique_ids(self):
+        invalid_catalog = [
+            *ATTACK_TECHNIQUE_CATALOG,
+            ATTACK_TECHNIQUE_CATALOG[0],
+        ]
+        with self.assertRaisesRegex(ValueError, "Duplicate ATT&CK technique IDs"):
+            validate_attack_catalog(invalid_catalog, CORE_TECHNIQUE_CODES, EXTENDED_TECHNIQUE_CODES, CAPABILITY_TECHNIQUE_MAPS)
+
+    def test_attack_catalog_validation_rejects_missing_tactics(self):
+        invalid_catalog = [
+            {
+                **ATTACK_TECHNIQUE_CATALOG[0],
+                "tactic": "",
+            },
+            *ATTACK_TECHNIQUE_CATALOG[1:],
+        ]
+        with self.assertRaisesRegex(ValueError, "missing tactic assignments"):
+            validate_attack_catalog(invalid_catalog, CORE_TECHNIQUE_CODES, EXTENDED_TECHNIQUE_CODES, CAPABILITY_TECHNIQUE_MAPS)
+
+    def test_attack_catalog_validation_rejects_unmapped_techniques(self):
+        invalid_maps = [
+            entry
+            for entry in CAPABILITY_TECHNIQUE_MAPS
+            if entry[1] != "T1190"
+        ]
+        with self.assertRaisesRegex(ValueError, "missing capability mappings"):
+            validate_attack_catalog(ATTACK_TECHNIQUE_CATALOG, CORE_TECHNIQUE_CODES, EXTENDED_TECHNIQUE_CODES, invalid_maps)
+
+    def test_attack_catalog_validation_rejects_core_extended_overlap_and_wrong_counts(self):
+        overlapping_extended = [CORE_TECHNIQUE_CODES[0], *EXTENDED_TECHNIQUE_CODES[1:]]
+        with self.assertRaisesRegex(ValueError, "both Core and Extended"):
+            validate_attack_catalog(ATTACK_TECHNIQUE_CATALOG, CORE_TECHNIQUE_CODES, overlapping_extended, CAPABILITY_TECHNIQUE_MAPS)
+
+        short_core = CORE_TECHNIQUE_CODES[:-1]
+        with self.assertRaisesRegex(ValueError, "exactly 20 unique techniques"):
+            validate_attack_catalog(ATTACK_TECHNIQUE_CATALOG, short_core, EXTENDED_TECHNIQUE_CODES, CAPABILITY_TECHNIQUE_MAPS)
+
+    def test_tags_endpoint_returns_seeded_tag_catalog(self):
+        response = self.client.get("/tags")
+        self.assertEqual(response.status_code, 200)
+        tag_names = [item["name"] for item in response.json()]
+        self.assertIn("Active Directory", tag_names)
+        self.assertIn("Password Security", tag_names)
+
+    def test_templates_endpoint_returns_core_and_optional_templates_for_pure_edr(self):
+        response = self.client.get("/templates?category=EDR")
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        capability_codes = [item["capability"]["code"] for item in payload]
+
+        self.assertIn("CAP-001", capability_codes)
+        self.assertIn("CAP-003", capability_codes)
+        self.assertIn("CAP-013", capability_codes)
+        self.assertTrue(any(item["suggestion_group"] == "core" for item in payload))
+        self.assertTrue(any(item["suggestion_group"] == "optional" for item in payload))
+
+    def test_specops_like_suggestions_adapt_to_identity_and_password_tags(self):
+        response = self.client.get(
+            "/templates?category=Identity&tags=Active%20Directory&tags=Password%20Security"
+        )
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        capability_codes = [item["capability"]["code"] for item in payload]
+
+        self.assertIn("CAP-009", capability_codes)
+        self.assertIn("CAP-008", capability_codes)
+        self.assertIn("CAP-021", capability_codes)
+        self.assertIn("CAP-022", capability_codes)
+        self.assertIn("CAP-023", capability_codes)
+        self.assertIn("CAP-024", capability_codes)
+        self.assertTrue(
+            any(item["capability"]["code"] == "CAP-024" and item["suggestion_group"] == "core" for item in payload)
+        )
+        self.assertTrue(
+            any(
+                item["capability"]["code"] == "CAP-021" and "Active Directory" in item["matched_tags"]
+                for item in payload
+            )
+        )
+
+    def test_mixed_sase_suggestions_use_tags_without_returning_empty_results(self):
+        response = self.client.get(
+            "/templates?category=SASE&tags=Network%20Traffic&tags=Data%20Loss%20Prevention&tags=Authentication"
+        )
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        capability_codes = [item["capability"]["code"] for item in payload]
+
+        self.assertGreater(len(payload), 0)
+        self.assertIn("CAP-006", capability_codes)
+        self.assertIn("CAP-007", capability_codes)
+        self.assertIn("CAP-009", capability_codes)
+
+    def test_apply_templates_to_tool_assigns_selected_capabilities(self):
+        tool = self._create_tool("Endpoint Control", "EDR")
+        templates = self.client.get("/templates?category=EDR").json()
+        selected = [
+            {
+                "template_id": templates[0]["id"],
+                "control_effect": templates[0]["default_effect"],
+                "implementation_level": templates[0]["default_implementation_level"],
+            },
+            {
+                "template_id": templates[1]["id"],
+                "control_effect": "block",
+                "implementation_level": templates[1]["default_implementation_level"],
+            },
+        ]
+
+        response = self.client.post(
+            f"/tools/{tool['id']}/templates",
+            json={"selected_templates": selected},
+        )
+        self.assertEqual(response.status_code, 200)
+        assignments = response.json()["capabilities"]
+
+        self.assertEqual(len(assignments), 2)
+        self.assertTrue(any(item["control_effect"] == "block" for item in assignments))
+
+    def test_scope_endpoint_only_marks_multi_scope_technique_as_partial(self):
+        tool = self._create_tool("Endpoint DLP", "DLP")
+        capability = self._find_capability("CAP-007")
+        self._assign_capability(tool["id"], capability["id"], "block", "full")
+        self._set_scopes(tool["id"], capability["id"], [("endpoint_user_device", "full", "Endpoint agents only")])
+
+        row = next(item for item in self.client.get("/coverage").json() if item["technique_code"] == "T1041")
+        self.assertEqual(row["effective_control_effect"], "block")
+        self.assertTrue(row["is_gap_scope_missing"])
+        self.assertTrue(row["is_gap_partial"])
+        self.assertIn("endpoint_user_device", row["scope_summary"]["full_scopes"])
+        self.assertIn("server", row["scope_summary"]["missing_scopes"])
+
+    def test_full_scope_assignment_removes_scope_gap(self):
+        tool = self._create_tool("Full DLP", "DLP")
+        capability = self._find_capability("CAP-007")
+        self._assign_capability(tool["id"], capability["id"], "block", "full")
+        self._set_scopes(
+            tool["id"],
+            capability["id"],
+            [
+                ("endpoint_user_device", "full", "Endpoints"),
+                ("server", "full", "Servers"),
+                ("cloud_workload", "full", "Cloud workloads"),
+            ],
+        )
+
+        row = next(item for item in self.client.get("/coverage").json() if item["technique_code"] == "T1041")
+        self.assertEqual(row["effective_control_effect"], "block")
+        self.assertFalse(row["is_gap_scope_missing"])
+        self.assertFalse(row["is_gap_scope_partial"])
+
+    def test_capability_without_scope_is_not_valid_global_coverage(self):
+        tool = self._create_tool("Unknown Scope DLP", "DLP")
+        capability = self._find_capability("CAP-007")
+        self._assign_capability(tool["id"], capability["id"], "block", "full")
+
+        row = next(item for item in self.client.get("/coverage").json() if item["technique_code"] == "T1041")
+        self.assertEqual(row["effective_control_effect"], "none")
+        self.assertTrue(row["is_gap_scope_missing"])
+        self.assertEqual(row["confidence_level"], "low")
+
+    def test_missing_critical_public_facing_scope_keeps_t1190_as_gap(self):
+        tool = self._create_tool("Edge Firewall", "Other")
+        capability = self._find_capability("CAP-031")
+        self._assign_capability(tool["id"], capability["id"], "prevent", "full")
+        self._set_scopes(tool["id"], capability["id"], [("server", "full", "Internal servers only")])
+        self._verify_configuration(tool["id"], capability["id"], ["yes", "yes", "yes", "yes"])
+
+        row = next(item for item in self.client.get("/coverage").json() if item["technique_code"] == "T1190")
+        self.assertEqual(row["effective_control_effect"], "none")
+        self.assertTrue(row["is_gap_scope_missing"])
+
+    def test_tool_tags_can_be_updated(self):
+        tool = self._create_tool("Specops", "Identity")
+        response = self.client.put(
+            f"/tools/{tool['id']}/tags",
+            json={"tags": ["Active Directory", "Password Security", "Credential Hygiene"]},
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            response.json()["tags"],
+            ["Active Directory", "Password Security", "Credential Hygiene"],
+        )
+
+    def test_capability_detail_includes_tools_answers_and_related_techniques(self):
+        tool = self._create_tool("Identity Control", "PAM")
+        capability = self._find_capability("CAP-009")
+        self._assign_capability(tool["id"], capability["id"], "detect", "full")
+
+        template = self.client.get(f"/capabilities/{capability['id']}/assessment-template").json()
+        self.client.post(
+            f"/tools/{tool['id']}/capabilities/{capability['id']}/assessment-answers",
+            json={
+                "answers": [
+                    {"question_id": template["questions"][0]["id"], "answer": "yes"},
+                    {"question_id": template["questions"][1]["id"], "answer": "partial"},
+                ]
+            },
+        )
+
+        detail = self.client.get(f"/capabilities/{capability['id']}")
+        self.assertEqual(detail.status_code, 200)
+        payload = detail.json()
+        self.assertEqual(payload["capability"]["code"], "CAP-009")
+        self.assertGreater(len(payload["related_techniques"]), 0)
+        self.assertEqual(payload["implementing_tools"][0]["tool_name"], "Identity Control")
+        self.assertEqual(len(payload["implementing_tools"][0]["assessment_answers"]), 2)
+
+
+if __name__ == "__main__":
+    unittest.main()

@@ -1,0 +1,976 @@
+from contextlib import asynccontextmanager
+
+from fastapi import Depends, FastAPI, HTTPException, Query
+from fastapi.middleware.cors import CORSMiddleware
+from sqlalchemy import select
+from sqlalchemy.orm import Session, joinedload
+
+from app.database import BASE_DIR, Base, SessionLocal, engine
+from app.migration import migrate_legacy_database
+from app.models import (
+    Capability,
+    CapabilityAssessmentTemplate,
+    CapabilityConfigurationQuestion,
+    CapabilityRequiredDataSource,
+    CapabilitySupportedResponseAction,
+    CapabilityTechniqueMap,
+    CoverageScope,
+    DataSource,
+    ResponseAction,
+    Technique,
+    Tool,
+    ToolCapability,
+    ToolCapabilityAssessmentAnswer,
+    ToolCapabilityConfigurationAnswer,
+    ToolCapabilityConfigurationProfile,
+    ToolCapabilityEvidence,
+    ToolCapabilityScope,
+    ToolCapabilityTemplate,
+    ToolDataSource,
+    ToolResponseAction,
+    TechniqueRelevantScope,
+)
+from app.schemas import (
+    AssessmentTemplateRead,
+    CapabilityDetailRead,
+    CapabilityImplementingToolRead,
+    CapabilityRequiredDataSourceRead,
+    CapabilityRead,
+    CapabilityConfigurationQuestionRead,
+    CapabilitySupportedResponseActionRead,
+    CapabilityTechniqueMapRead,
+    ConfidenceSummaryRead,
+    CoverageScopeRead,
+    ConfigurationSummaryRead,
+    DataSourceRead,
+    ResponseActionRead,
+    ToolCapabilityAssessmentAnswerRead,
+    ToolCapabilityAssessmentSubmission,
+    ToolCapabilityConfigurationAnswerRead,
+    ToolCapabilityConfigurationProfileCreate,
+    ToolCapabilityConfigurationProfileRead,
+    ToolCapabilityConfigurationSubmission,
+    ToolCapabilityDetailRead,
+    ToolCapabilityEvidenceCreate,
+    ToolCapabilityEvidenceRead,
+    ToolCapabilityRead,
+    ToolCapabilityScopeRead,
+    ToolCapabilityScopeSubmission,
+    ToolCapabilityTemplateApplyRequest,
+    ToolCapabilityTemplateRead,
+    ToolCapabilityUpsert,
+    ToolCreate,
+    ToolDataSourceRead,
+    ToolDataSourceUpsert,
+    ToolRead,
+    ToolTagRead,
+    ToolTagsUpdate,
+    ToolResponseActionRead,
+    ToolResponseActionUpsert,
+    TechniqueRelevantScopeRead,
+)
+from app.seed import seed_reference_data, sync_reference_data
+from app.services.configuration import (
+    calculate_configuration_status,
+    ensure_configuration_profile,
+    sync_tool_capability_configuration,
+)
+from app.services.confidence import sync_tool_capability_confidence
+from app.services.confidence import calculate_confidence
+from app.services.coverage import compute_coverage
+from app.services.tool_templates import (
+    apply_templates_to_tool,
+    get_ranked_templates,
+    list_available_tags,
+)
+
+
+def get_db():
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
+
+
+@asynccontextmanager
+async def lifespan(_: FastAPI):
+    migrate_legacy_database(BASE_DIR / "defensegraph.db")
+    Base.metadata.create_all(bind=engine)
+    db = SessionLocal()
+    try:
+        sync_reference_data(db)
+        seed_reference_data(db)
+    finally:
+        db.close()
+    yield
+
+
+app = FastAPI(title="DefenseGraph API", lifespan=lifespan)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+
+def get_tool_or_404(db: Session, tool_id: int) -> Tool:
+    statement = (
+        select(Tool)
+        .options(
+            joinedload(Tool.capabilities)
+            .joinedload(ToolCapability.capability)
+            .joinedload(Capability.assessment_template)
+            .joinedload(CapabilityAssessmentTemplate.questions),
+            joinedload(Tool.capabilities).joinedload(ToolCapability.capability).joinedload(Capability.configuration_questions),
+            joinedload(Tool.capabilities).joinedload(ToolCapability.capability).joinedload(Capability.technique_maps).joinedload(CapabilityTechniqueMap.technique).joinedload(Technique.relevant_scopes).joinedload(TechniqueRelevantScope.coverage_scope),
+            joinedload(Tool.capabilities).joinedload(ToolCapability.assessment_answers),
+            joinedload(Tool.capabilities).joinedload(ToolCapability.evidence_items),
+            joinedload(Tool.capabilities).joinedload(ToolCapability.configuration_profile),
+            joinedload(Tool.capabilities).joinedload(ToolCapability.configuration_answers),
+            joinedload(Tool.capabilities).joinedload(ToolCapability.scopes).joinedload(ToolCapabilityScope.coverage_scope),
+            joinedload(Tool.data_sources).joinedload(ToolDataSource.data_source),
+            joinedload(Tool.response_actions).joinedload(ToolResponseAction.response_action),
+        )
+        .where(Tool.id == tool_id)
+    )
+    tool = db.execute(statement).unique().scalar_one_or_none()
+    if tool is None:
+        raise HTTPException(status_code=404, detail="Tool not found")
+    return tool
+
+
+def normalize_tags(tags: list[str]) -> list[str]:
+    normalized: list[str] = []
+    seen: set[str] = set()
+    for tag in tags:
+        cleaned = tag.strip()
+        if not cleaned:
+            continue
+        marker = cleaned.casefold()
+        if marker in seen:
+            continue
+        seen.add(marker)
+        normalized.append(cleaned)
+    return normalized
+
+
+def get_capability_or_404(db: Session, capability_id: int) -> Capability:
+    statement = (
+        select(Capability)
+        .options(
+            joinedload(Capability.technique_maps).joinedload(CapabilityTechniqueMap.technique),
+            joinedload(Capability.assessment_template).joinedload(CapabilityAssessmentTemplate.questions),
+            joinedload(Capability.tool_capabilities).joinedload(ToolCapability.tool),
+            joinedload(Capability.tool_capabilities).joinedload(ToolCapability.assessment_answers),
+            joinedload(Capability.tool_capabilities).joinedload(ToolCapability.evidence_items),
+            joinedload(Capability.tool_capabilities).joinedload(ToolCapability.configuration_profile),
+            joinedload(Capability.tool_capabilities).joinedload(ToolCapability.scopes).joinedload(ToolCapabilityScope.coverage_scope),
+            joinedload(Capability.required_data_sources).joinedload(CapabilityRequiredDataSource.data_source),
+            joinedload(Capability.supported_response_actions).joinedload(CapabilitySupportedResponseAction.response_action),
+            joinedload(Capability.configuration_questions),
+            joinedload(Capability.technique_maps).joinedload(CapabilityTechniqueMap.technique).joinedload(Technique.relevant_scopes).joinedload(TechniqueRelevantScope.coverage_scope),
+        )
+        .where(Capability.id == capability_id)
+    )
+    capability = db.execute(statement).unique().scalar_one_or_none()
+    if capability is None:
+        raise HTTPException(status_code=404, detail="Capability not found")
+    return capability
+
+
+def get_tool_capability_or_404(db: Session, tool_id: int, capability_id: int) -> ToolCapability:
+    statement = (
+        select(ToolCapability)
+        .options(
+            joinedload(ToolCapability.tool),
+            joinedload(ToolCapability.capability)
+            .joinedload(Capability.assessment_template)
+            .joinedload(CapabilityAssessmentTemplate.questions),
+            joinedload(ToolCapability.capability).joinedload(Capability.configuration_questions),
+            joinedload(ToolCapability.capability).joinedload(Capability.technique_maps).joinedload(CapabilityTechniqueMap.technique).joinedload(Technique.relevant_scopes).joinedload(TechniqueRelevantScope.coverage_scope),
+            joinedload(ToolCapability.capability)
+            .joinedload(Capability.required_data_sources)
+            .joinedload(CapabilityRequiredDataSource.data_source),
+            joinedload(ToolCapability.capability)
+            .joinedload(Capability.supported_response_actions)
+            .joinedload(CapabilitySupportedResponseAction.response_action),
+            joinedload(ToolCapability.assessment_answers),
+            joinedload(ToolCapability.evidence_items),
+            joinedload(ToolCapability.configuration_profile),
+            joinedload(ToolCapability.configuration_answers),
+            joinedload(ToolCapability.scopes).joinedload(ToolCapabilityScope.coverage_scope),
+        )
+        .where(
+            ToolCapability.tool_id == tool_id,
+            ToolCapability.capability_id == capability_id,
+        )
+    )
+    assignment = db.execute(statement).unique().scalar_one_or_none()
+    if assignment is None:
+        raise HTTPException(status_code=404, detail="Tool capability not found")
+    return assignment
+
+
+def serialize_tool(tool: Tool) -> ToolRead:
+    return ToolRead(
+        id=tool.id,
+        name=tool.name,
+        category=tool.category,
+        tool_type=tool.tool_type,
+        tags=tool.tags,
+        capabilities=[
+            serialize_tool_capability_read(assignment)
+            for assignment in sorted(tool.capabilities, key=lambda item: item.capability_id)
+        ],
+        data_sources=[
+            ToolDataSourceRead(
+                id=entry.id,
+                tool_id=entry.tool_id,
+                data_source_id=entry.data_source_id,
+                ingestion_status=entry.ingestion_status,
+                notes=entry.notes,
+                data_source=DataSourceRead.model_validate(entry.data_source),
+            )
+            for entry in sorted(tool.data_sources, key=lambda item: item.data_source.name)
+        ],
+        response_actions=[
+            ToolResponseActionRead(
+                id=entry.id,
+                tool_id=entry.tool_id,
+                response_action_id=entry.response_action_id,
+                implementation_level=entry.implementation_level,
+                notes=entry.notes,
+                response_action=ResponseActionRead.model_validate(entry.response_action),
+            )
+            for entry in sorted(tool.response_actions, key=lambda item: item.response_action.name)
+        ],
+    )
+
+
+def serialize_tool_capability_read(assignment: ToolCapability) -> ToolCapabilityRead:
+    total_questions = (
+        len(assignment.capability.assessment_template.questions)
+        if assignment.capability.assessment_template
+        else 0
+    )
+    summary = calculate_confidence(assignment, total_questions)
+    return ToolCapabilityRead(
+        capability_id=assignment.capability_id,
+        control_effect=assignment.control_effect,
+        implementation_level=assignment.implementation_level,
+        confidence_source=summary.confidence_source,
+        confidence_level=summary.confidence_level,
+        scopes=[
+            serialize_tool_capability_scope(scope)
+            for scope in sorted(assignment.scopes, key=lambda item: item.coverage_scope.name)
+            if scope.status != "none"
+        ],
+    )
+
+
+def serialize_assessment_template(template: CapabilityAssessmentTemplate | None) -> AssessmentTemplateRead | None:
+    if template is None:
+        return None
+
+    return AssessmentTemplateRead(
+        id=template.id,
+        capability_id=template.capability_id,
+        description=template.description,
+        questions=[
+            {
+                "id": question.id,
+                "prompt": question.prompt,
+                "position": question.position,
+            }
+            for question in template.questions
+        ],
+    )
+
+
+def serialize_tool_capability_template(template: ToolCapabilityTemplate) -> ToolCapabilityTemplateRead:
+    return serialize_ranked_tool_template(template, [], "optional")
+
+
+def serialize_ranked_tool_template(
+    template: ToolCapabilityTemplate,
+    matched_tags: list[str],
+    suggestion_group: str,
+) -> ToolCapabilityTemplateRead:
+    return ToolCapabilityTemplateRead(
+        id=template.id,
+        category=template.category,
+        capability_id=template.capability_id,
+        optional_tags=template.optional_tags,
+        priority=template.priority,
+        default_effect=template.default_effect,
+        default_implementation_level=template.default_implementation_level,
+        confidence_hint=template.confidence_hint,
+        description=template.description,
+        capability=CapabilityRead.model_validate(template.capability),
+        matched_tags=matched_tags,
+        suggestion_group=suggestion_group,
+    )
+
+
+def serialize_configuration_profile(
+    profile: ToolCapabilityConfigurationProfile | None,
+) -> ToolCapabilityConfigurationProfileRead | None:
+    if profile is None:
+        return None
+
+    return ToolCapabilityConfigurationProfileRead(
+        id=profile.id,
+        tool_id=profile.tool_id,
+        capability_id=profile.capability_id,
+        profile_type=profile.profile_type,
+        configuration_status=profile.configuration_status,
+        notes=profile.notes,
+        last_updated_at=profile.last_updated_at,
+    )
+
+
+def serialize_tool_capability_scope(scope: ToolCapabilityScope) -> ToolCapabilityScopeRead:
+    return ToolCapabilityScopeRead(
+        id=scope.id,
+        tool_capability_id=scope.tool_capability_id,
+        coverage_scope_id=scope.coverage_scope_id,
+        status=scope.status,
+        notes=scope.notes,
+        coverage_scope=CoverageScopeRead.model_validate(scope.coverage_scope),
+    )
+
+
+def serialize_technique_relevant_scope(link: TechniqueRelevantScope) -> TechniqueRelevantScopeRead:
+    return TechniqueRelevantScopeRead(
+        coverage_scope_id=link.coverage_scope_id,
+        relevance=link.relevance,
+        coverage_scope=CoverageScopeRead.model_validate(link.coverage_scope),
+    )
+
+
+def serialize_assignment_detail(tool_capability: ToolCapability) -> ToolCapabilityDetailRead:
+    total_questions = (
+        len(tool_capability.capability.assessment_template.questions)
+        if tool_capability.capability.assessment_template
+        else 0
+    )
+    summary = calculate_confidence(tool_capability, total_questions)
+    configuration_summary = (
+        calculate_configuration_status(
+            tool_capability.configuration_profile,
+            len(tool_capability.capability.configuration_questions),
+        )
+        if tool_capability.capability.requires_configuration
+        else None
+    )
+    return ToolCapabilityDetailRead(
+        capability=CapabilityRead.model_validate(tool_capability.capability),
+        assignment=ToolCapabilityRead(
+            capability_id=tool_capability.capability_id,
+            control_effect=tool_capability.control_effect,
+            implementation_level=tool_capability.implementation_level,
+            confidence_source=summary.confidence_source,
+            confidence_level=summary.confidence_level,
+            scopes=[
+                serialize_tool_capability_scope(scope)
+                for scope in sorted(tool_capability.scopes, key=lambda item: item.coverage_scope.name)
+                if scope.status != "none"
+            ],
+        ),
+        confidence=ConfidenceSummaryRead(**summary.__dict__),
+        assessment_template=serialize_assessment_template(tool_capability.capability.assessment_template),
+        assessment_answers=[
+            ToolCapabilityAssessmentAnswerRead(
+                question_id=answer.question_id,
+                answer=answer.answer,
+            )
+            for answer in sorted(tool_capability.assessment_answers, key=lambda item: item.question_id)
+        ],
+        evidence=[
+            ToolCapabilityEvidenceRead.model_validate(item)
+            for item in sorted(tool_capability.evidence_items, key=lambda evidence: evidence.id)
+        ],
+        required_data_sources=[
+            CapabilityRequiredDataSourceRead(
+                data_source_id=entry.data_source_id,
+                requirement_level=entry.requirement_level,
+                data_source=DataSourceRead.model_validate(entry.data_source),
+            )
+            for entry in sorted(tool_capability.capability.required_data_sources, key=lambda item: item.data_source.name)
+        ],
+        supported_response_actions=[
+            CapabilitySupportedResponseActionRead(
+                response_action_id=entry.response_action_id,
+                response_action=ResponseActionRead.model_validate(entry.response_action),
+            )
+            for entry in sorted(tool_capability.capability.supported_response_actions, key=lambda item: item.response_action.name)
+        ],
+        configuration_profile=serialize_configuration_profile(tool_capability.configuration_profile),
+        configuration_summary=(
+            ConfigurationSummaryRead(**configuration_summary.__dict__)
+            if configuration_summary is not None
+            else None
+        ),
+        configuration_questions=[
+            CapabilityConfigurationQuestionRead(
+                id=question.id,
+                question=question.question,
+                applies_to_profile_type=question.applies_to_profile_type,
+            )
+            for question in tool_capability.capability.configuration_questions
+        ],
+        configuration_answers=[
+            ToolCapabilityConfigurationAnswerRead(
+                question_id=answer.question_id,
+                answer=answer.answer,
+            )
+            for answer in sorted(tool_capability.configuration_answers, key=lambda item: item.question_id)
+        ],
+        scopes=[
+            serialize_tool_capability_scope(scope)
+            for scope in sorted(tool_capability.scopes, key=lambda item: item.coverage_scope.name)
+            if scope.status != "none"
+        ],
+        relevant_scopes=[
+            serialize_technique_relevant_scope(scope_link)
+            for scope_link in sorted(
+                {
+                    scope_link.id: scope_link
+                    for technique_map in tool_capability.capability.technique_maps
+                    for scope_link in technique_map.technique.relevant_scopes
+                }.values(),
+                key=lambda item: (item.relevance, item.coverage_scope.name),
+            )
+        ],
+    )
+
+
+def serialize_capability_detail(capability: Capability) -> CapabilityDetailRead:
+    return CapabilityDetailRead(
+        capability=CapabilityRead.model_validate(capability),
+        assessment_template=serialize_assessment_template(capability.assessment_template),
+        related_techniques=[
+            CapabilityTechniqueMapRead(
+                technique_id=entry.technique_id,
+                technique_code=entry.technique.code,
+                technique_name=entry.technique.name,
+                control_effect=entry.control_effect,
+                coverage=entry.coverage,
+            )
+            for entry in sorted(
+                capability.technique_maps,
+                key=lambda item: (item.technique.code, item.control_effect),
+            )
+        ],
+        implementing_tools=[
+            _serialize_capability_implementing_tool(assignment)
+            for assignment in sorted(
+                capability.tool_capabilities,
+                key=lambda item: (item.tool.name, item.capability_id),
+            )
+        ],
+        required_data_sources=[
+            CapabilityRequiredDataSourceRead(
+                data_source_id=entry.data_source_id,
+                requirement_level=entry.requirement_level,
+                data_source=DataSourceRead.model_validate(entry.data_source),
+            )
+            for entry in sorted(capability.required_data_sources, key=lambda item: item.data_source.name)
+        ],
+        supported_response_actions=[
+            CapabilitySupportedResponseActionRead(
+                response_action_id=entry.response_action_id,
+                response_action=ResponseActionRead.model_validate(entry.response_action),
+            )
+            for entry in sorted(capability.supported_response_actions, key=lambda item: item.response_action.name)
+        ],
+        configuration_questions=[
+            CapabilityConfigurationQuestionRead(
+                id=question.id,
+                question=question.question,
+                applies_to_profile_type=question.applies_to_profile_type,
+            )
+            for question in capability.configuration_questions
+        ],
+    )
+
+
+def _serialize_capability_implementing_tool(assignment: ToolCapability) -> CapabilityImplementingToolRead:
+    total_questions = (
+        len(assignment.capability.assessment_template.questions)
+        if assignment.capability.assessment_template
+        else 0
+    )
+    summary = calculate_confidence(assignment, total_questions)
+    configuration_status = (
+        calculate_configuration_status(
+            assignment.configuration_profile,
+            len(assignment.capability.configuration_questions),
+        ).configuration_status
+        if assignment.capability.requires_configuration
+        else None
+    )
+    return CapabilityImplementingToolRead(
+        tool_id=assignment.tool_id,
+        tool_name=assignment.tool.name,
+        tool_category=assignment.tool.category,
+        tool_type=assignment.tool.tool_type,
+        control_effect=assignment.control_effect,
+        implementation_level=assignment.implementation_level,
+        confidence_source=summary.confidence_source,
+        confidence_level=summary.confidence_level,
+        assessment_answers=[
+            ToolCapabilityAssessmentAnswerRead(
+                question_id=answer.question_id,
+                answer=answer.answer,
+            )
+            for answer in sorted(assignment.assessment_answers, key=lambda item: item.question_id)
+        ],
+        configuration_status=configuration_status,
+        effectively_active=configuration_status != "not_enabled",
+        scopes=[
+            serialize_tool_capability_scope(scope)
+            for scope in sorted(assignment.scopes, key=lambda item: item.coverage_scope.name)
+            if scope.status != "none"
+        ],
+    )
+
+
+@app.post("/tools", response_model=ToolRead, status_code=201)
+def create_tool(payload: ToolCreate, db: Session = Depends(get_db)):
+    existing = db.scalar(select(Tool).where(Tool.name == payload.name.strip()))
+    if existing:
+        raise HTTPException(status_code=400, detail="Tool already exists")
+
+    tool = Tool(
+        name=payload.name.strip(),
+        category=payload.category,
+        tool_type=payload.tool_type,
+        tags=normalize_tags(payload.tags),
+    )
+    db.add(tool)
+    db.commit()
+    db.refresh(tool)
+    return serialize_tool(get_tool_or_404(db, tool.id))
+
+
+@app.get("/tools", response_model=list[ToolRead])
+def list_tools(db: Session = Depends(get_db)):
+    statement = (
+        select(Tool)
+        .options(
+            joinedload(Tool.capabilities)
+            .joinedload(ToolCapability.capability)
+            .joinedload(Capability.assessment_template)
+            .joinedload(CapabilityAssessmentTemplate.questions),
+            joinedload(Tool.capabilities).joinedload(ToolCapability.capability).joinedload(Capability.configuration_questions),
+            joinedload(Tool.capabilities).joinedload(ToolCapability.scopes).joinedload(ToolCapabilityScope.coverage_scope),
+            joinedload(Tool.capabilities).joinedload(ToolCapability.configuration_profile),
+            joinedload(Tool.capabilities).joinedload(ToolCapability.assessment_answers),
+            joinedload(Tool.capabilities).joinedload(ToolCapability.evidence_items),
+            joinedload(Tool.data_sources).joinedload(ToolDataSource.data_source),
+            joinedload(Tool.response_actions).joinedload(ToolResponseAction.response_action),
+        )
+        .order_by(Tool.name)
+    )
+    return [serialize_tool(tool) for tool in db.execute(statement).unique().scalars().all()]
+
+
+@app.get("/tools/{tool_id}", response_model=ToolRead)
+def read_tool(tool_id: int, db: Session = Depends(get_db)):
+    return serialize_tool(get_tool_or_404(db, tool_id))
+
+
+@app.put("/tools/{tool_id}/tags", response_model=ToolRead)
+def update_tool_tags(tool_id: int, payload: ToolTagsUpdate, db: Session = Depends(get_db)):
+    tool = get_tool_or_404(db, tool_id)
+    tool.tags = normalize_tags(payload.tags)
+    db.commit()
+    return serialize_tool(get_tool_or_404(db, tool_id))
+
+
+@app.delete("/tools/{tool_id}", status_code=204)
+def delete_tool(tool_id: int, db: Session = Depends(get_db)):
+    tool = get_tool_or_404(db, tool_id)
+    db.delete(tool)
+    db.commit()
+
+
+@app.get("/capabilities", response_model=list[CapabilityRead])
+def list_capabilities(db: Session = Depends(get_db)):
+    statement = select(Capability).order_by(Capability.domain, Capability.name)
+    return db.scalars(statement).all()
+
+
+@app.get("/capabilities/{capability_id}", response_model=CapabilityDetailRead)
+def get_capability_detail(capability_id: int, db: Session = Depends(get_db)):
+    capability = get_capability_or_404(db, capability_id)
+    return serialize_capability_detail(capability)
+
+
+@app.get("/assessment-templates", response_model=list[AssessmentTemplateRead])
+def list_assessment_templates(db: Session = Depends(get_db)):
+    statement = (
+        select(CapabilityAssessmentTemplate)
+        .options(joinedload(CapabilityAssessmentTemplate.questions))
+        .order_by(CapabilityAssessmentTemplate.capability_id)
+    )
+    return [
+        serialize_assessment_template(template)
+        for template in db.execute(statement).unique().scalars().all()
+    ]
+
+
+@app.get("/capabilities/{capability_id}/assessment-template", response_model=AssessmentTemplateRead | None)
+def get_assessment_template(capability_id: int, db: Session = Depends(get_db)):
+    capability = get_capability_or_404(db, capability_id)
+    return serialize_assessment_template(capability.assessment_template)
+
+
+@app.get("/tags", response_model=list[ToolTagRead])
+def get_tags():
+    return [ToolTagRead(**entry) for entry in list_available_tags()]
+
+
+@app.get("/data-sources", response_model=list[DataSourceRead])
+def list_data_sources(db: Session = Depends(get_db)):
+    return db.scalars(select(DataSource).order_by(DataSource.name)).all()
+
+
+@app.get("/coverage-scopes", response_model=list[CoverageScopeRead])
+def list_coverage_scopes(db: Session = Depends(get_db)):
+    return db.scalars(select(CoverageScope).order_by(CoverageScope.name)).all()
+
+
+@app.get("/response-actions", response_model=list[ResponseActionRead])
+def list_response_actions(db: Session = Depends(get_db)):
+    return db.scalars(select(ResponseAction).order_by(ResponseAction.name)).all()
+
+
+@app.get("/templates", response_model=list[ToolCapabilityTemplateRead])
+def list_tool_capability_templates(
+    category: str,
+    tags: list[str] = Query(default=[]),
+    db: Session = Depends(get_db),
+):
+    ranked_templates = get_ranked_templates(db, category, tags)
+    return [
+        serialize_ranked_tool_template(item.template, item.matched_tags, item.suggestion_group)
+        for item in ranked_templates
+    ]
+
+
+@app.post("/tools/{tool_id}/capabilities", response_model=ToolRead)
+def upsert_tool_capability(tool_id: int, payload: ToolCapabilityUpsert, db: Session = Depends(get_db)):
+    tool = get_tool_or_404(db, tool_id)
+    capability = db.get(Capability, payload.capability_id)
+    if capability is None:
+        raise HTTPException(status_code=404, detail="Capability not found")
+
+    assignment = db.scalar(
+        select(ToolCapability).where(
+            ToolCapability.tool_id == tool_id,
+            ToolCapability.capability_id == payload.capability_id,
+        )
+    )
+
+    if payload.control_effect == "none" or payload.implementation_level == "none":
+        if assignment is not None:
+            db.delete(assignment)
+            db.commit()
+        return serialize_tool(get_tool_or_404(db, tool_id))
+
+    if assignment is None:
+        assignment = ToolCapability(
+            tool_id=tool.id,
+            capability_id=capability.id,
+            control_effect=payload.control_effect,
+            implementation_level=payload.implementation_level,
+        )
+        db.add(assignment)
+        db.flush()
+    else:
+        assignment.control_effect = payload.control_effect
+        assignment.implementation_level = payload.implementation_level
+
+    sync_tool_capability_confidence(assignment)
+    db.commit()
+    return serialize_tool(get_tool_or_404(db, tool_id))
+
+
+@app.post("/tools/{tool_id}/capabilities/{capability_id}/scopes", response_model=ToolCapabilityDetailRead)
+def upsert_tool_capability_scopes(
+    tool_id: int,
+    capability_id: int,
+    payload: ToolCapabilityScopeSubmission,
+    db: Session = Depends(get_db),
+):
+    assignment = get_tool_capability_or_404(db, tool_id, capability_id)
+    available_scopes = {scope.id: scope for scope in db.scalars(select(CoverageScope)).all()}
+    existing_links = {link.coverage_scope_id: link for link in assignment.scopes}
+
+    for item in payload.scopes:
+        if item.coverage_scope_id not in available_scopes:
+            raise HTTPException(status_code=404, detail="Coverage scope not found")
+
+        existing = existing_links.get(item.coverage_scope_id)
+        if item.status == "none":
+            if existing is not None:
+                db.delete(existing)
+            continue
+
+        if existing is None:
+            db.add(
+                ToolCapabilityScope(
+                    tool_capability_id=assignment.id,
+                    coverage_scope_id=item.coverage_scope_id,
+                    status=item.status,
+                    notes=item.notes.strip(),
+                )
+            )
+        else:
+            existing.status = item.status
+            existing.notes = item.notes.strip()
+
+    db.commit()
+    return serialize_assignment_detail(get_tool_capability_or_404(db, tool_id, capability_id))
+
+
+@app.post("/tools/{tool_id}/data-sources", response_model=ToolRead)
+def upsert_tool_data_source(tool_id: int, payload: ToolDataSourceUpsert, db: Session = Depends(get_db)):
+    tool = get_tool_or_404(db, tool_id)
+    data_source = db.get(DataSource, payload.data_source_id)
+    if data_source is None:
+        raise HTTPException(status_code=404, detail="Data source not found")
+
+    assignment = db.scalar(
+        select(ToolDataSource).where(
+            ToolDataSource.tool_id == tool.id,
+            ToolDataSource.data_source_id == payload.data_source_id,
+        )
+    )
+
+    if payload.ingestion_status == "none":
+        if assignment is not None:
+            db.delete(assignment)
+            db.commit()
+        return serialize_tool(get_tool_or_404(db, tool_id))
+
+    if assignment is None:
+        assignment = ToolDataSource(
+            tool_id=tool.id,
+            data_source_id=data_source.id,
+            ingestion_status=payload.ingestion_status,
+            notes=payload.notes.strip(),
+        )
+        db.add(assignment)
+    else:
+        assignment.ingestion_status = payload.ingestion_status
+        assignment.notes = payload.notes.strip()
+
+    db.commit()
+    return serialize_tool(get_tool_or_404(db, tool_id))
+
+
+@app.post("/tools/{tool_id}/response-actions", response_model=ToolRead)
+def upsert_tool_response_action(tool_id: int, payload: ToolResponseActionUpsert, db: Session = Depends(get_db)):
+    tool = get_tool_or_404(db, tool_id)
+    action = db.get(ResponseAction, payload.response_action_id)
+    if action is None:
+        raise HTTPException(status_code=404, detail="Response action not found")
+
+    assignment = db.scalar(
+        select(ToolResponseAction).where(
+            ToolResponseAction.tool_id == tool.id,
+            ToolResponseAction.response_action_id == payload.response_action_id,
+        )
+    )
+
+    if payload.implementation_level == "none":
+        if assignment is not None:
+            db.delete(assignment)
+            db.commit()
+        return serialize_tool(get_tool_or_404(db, tool_id))
+
+    if assignment is None:
+        assignment = ToolResponseAction(
+            tool_id=tool.id,
+            response_action_id=action.id,
+            implementation_level=payload.implementation_level,
+            notes=payload.notes.strip(),
+        )
+        db.add(assignment)
+    else:
+        assignment.implementation_level = payload.implementation_level
+        assignment.notes = payload.notes.strip()
+
+    db.commit()
+    return serialize_tool(get_tool_or_404(db, tool_id))
+
+
+@app.post("/tools/{tool_id}/templates", response_model=ToolRead)
+def apply_tool_templates(
+    tool_id: int,
+    payload: ToolCapabilityTemplateApplyRequest,
+    db: Session = Depends(get_db),
+):
+    tool = get_tool_or_404(db, tool_id)
+    apply_templates_to_tool(db, tool, payload.selected_templates)
+    return serialize_tool(get_tool_or_404(db, tool_id))
+
+
+@app.get("/tools/{tool_id}/capabilities/{capability_id}", response_model=ToolCapabilityDetailRead)
+def get_tool_capability_detail(tool_id: int, capability_id: int, db: Session = Depends(get_db)):
+    assignment = get_tool_capability_or_404(db, tool_id, capability_id)
+    return serialize_assignment_detail(assignment)
+
+
+@app.post("/tools/{tool_id}/capabilities/{capability_id}/assessment-answers", response_model=ToolCapabilityDetailRead)
+def upsert_tool_capability_assessment(
+    tool_id: int,
+    capability_id: int,
+    payload: ToolCapabilityAssessmentSubmission,
+    db: Session = Depends(get_db),
+):
+    assignment = get_tool_capability_or_404(db, tool_id, capability_id)
+    template = assignment.capability.assessment_template
+    if template is None:
+        raise HTTPException(status_code=400, detail="Capability has no assessment template")
+
+    valid_question_ids = {question.id for question in template.questions}
+    for item in payload.answers:
+        if item.question_id not in valid_question_ids:
+            raise HTTPException(status_code=400, detail="Question does not belong to this capability")
+
+        answer = db.get(
+            ToolCapabilityAssessmentAnswer,
+            {
+                "tool_id": tool_id,
+                "capability_id": capability_id,
+                "question_id": item.question_id,
+            },
+        )
+        if answer is None:
+            answer = ToolCapabilityAssessmentAnswer(
+                tool_id=tool_id,
+                capability_id=capability_id,
+                question_id=item.question_id,
+                answer=item.answer,
+            )
+            db.add(answer)
+        else:
+            answer.answer = item.answer
+
+    sync_tool_capability_confidence(assignment)
+    db.commit()
+    return serialize_assignment_detail(get_tool_capability_or_404(db, tool_id, capability_id))
+
+
+@app.post(
+    "/tools/{tool_id}/capabilities/{capability_id}/configuration-profile",
+    response_model=ToolCapabilityDetailRead,
+)
+def upsert_tool_capability_configuration_profile(
+    tool_id: int,
+    capability_id: int,
+    payload: ToolCapabilityConfigurationProfileCreate,
+    db: Session = Depends(get_db),
+):
+    assignment = get_tool_capability_or_404(db, tool_id, capability_id)
+    if not assignment.capability.requires_configuration:
+        raise HTTPException(status_code=400, detail="Capability does not require configuration verification")
+
+    profile = ensure_configuration_profile(assignment)
+    profile.notes = payload.notes.strip()
+    sync_tool_capability_configuration(assignment)
+    sync_tool_capability_confidence(assignment)
+    db.commit()
+    return serialize_assignment_detail(get_tool_capability_or_404(db, tool_id, capability_id))
+
+
+@app.post(
+    "/tools/{tool_id}/capabilities/{capability_id}/configuration-answers",
+    response_model=ToolCapabilityDetailRead,
+)
+def upsert_tool_capability_configuration_answers(
+    tool_id: int,
+    capability_id: int,
+    payload: ToolCapabilityConfigurationSubmission,
+    db: Session = Depends(get_db),
+):
+    assignment = get_tool_capability_or_404(db, tool_id, capability_id)
+    capability = assignment.capability
+    if not capability.requires_configuration:
+        raise HTTPException(status_code=400, detail="Capability does not require configuration verification")
+
+    profile = ensure_configuration_profile(assignment)
+    valid_question_ids = {question.id for question in capability.configuration_questions}
+    for item in payload.answers:
+        if item.question_id not in valid_question_ids:
+            raise HTTPException(status_code=400, detail="Question does not belong to this capability")
+
+        answer = db.scalar(
+            select(ToolCapabilityConfigurationAnswer).where(
+                ToolCapabilityConfigurationAnswer.tool_id == tool_id,
+                ToolCapabilityConfigurationAnswer.capability_id == capability_id,
+                ToolCapabilityConfigurationAnswer.question_id == item.question_id,
+            )
+        )
+        if answer is None:
+            answer = ToolCapabilityConfigurationAnswer(
+                tool_id=tool_id,
+                capability_id=capability_id,
+                question_id=item.question_id,
+                answer=item.answer,
+            )
+            db.add(answer)
+        else:
+            answer.answer = item.answer
+
+    sync_tool_capability_configuration(assignment)
+    sync_tool_capability_confidence(assignment)
+    profile.profile_type = capability.configuration_profile_type
+    db.commit()
+    return serialize_assignment_detail(get_tool_capability_or_404(db, tool_id, capability_id))
+
+
+@app.get("/tools/{tool_id}/capabilities/{capability_id}/evidence", response_model=list[ToolCapabilityEvidenceRead])
+def list_tool_capability_evidence(tool_id: int, capability_id: int, db: Session = Depends(get_db)):
+    assignment = get_tool_capability_or_404(db, tool_id, capability_id)
+    return [
+        ToolCapabilityEvidenceRead.model_validate(item)
+        for item in sorted(assignment.evidence_items, key=lambda evidence: evidence.id)
+    ]
+
+
+@app.post("/tools/{tool_id}/capabilities/{capability_id}/evidence", response_model=ToolCapabilityDetailRead)
+def create_tool_capability_evidence(
+    tool_id: int,
+    capability_id: int,
+    payload: ToolCapabilityEvidenceCreate,
+    db: Session = Depends(get_db),
+):
+    assignment = get_tool_capability_or_404(db, tool_id, capability_id)
+    evidence = ToolCapabilityEvidence(
+        tool_id=tool_id,
+        capability_id=capability_id,
+        title=payload.title.strip(),
+        evidence_type=payload.evidence_type.strip(),
+        note=payload.note.strip(),
+        file_name=payload.file_name.strip() if payload.file_name else None,
+        recorded_at=payload.recorded_at,
+    )
+    db.add(evidence)
+    db.flush()
+    sync_tool_capability_confidence(assignment)
+    db.commit()
+    return serialize_assignment_detail(get_tool_capability_or_404(db, tool_id, capability_id))
+
+
+@app.get("/coverage")
+def get_coverage(db: Session = Depends(get_db)):
+    return compute_coverage(db)
