@@ -4,6 +4,7 @@ import type {
   ConfidenceLevel,
   CoverageStatus,
   CoverageType,
+  CoverageScope,
   DerivedTechnique,
   TechniqueCoverage,
   TechniqueDisplayGroup,
@@ -110,11 +111,15 @@ export function filterTechniqueStates(
   techniques: DerivedTechnique[],
   coverageFilters: CoverageType[],
   showOnlyGaps: boolean,
+  scopeFilter: string = "all",
 ) {
   return techniques.filter((technique) => {
     const matchesCoverage = coverageFilters.includes(technique.coverage_type);
     const matchesGap = !showOnlyGaps || isGap(technique);
-    return matchesCoverage && matchesGap;
+    const matchesScope =
+      scopeFilter === "all" ||
+      technique.relevant_scopes.some((scope) => scope.coverage_scope.code === scopeFilter);
+    return matchesCoverage && matchesGap && matchesScope;
   });
 }
 
@@ -268,6 +273,25 @@ export function buildToolOptions(tools: Tool[]): ToolCoverageSummary[] {
   return [
     { id: "all", name: "All tools" },
     ...tools.map((tool) => ({ id: tool.id, name: tool.name })),
+  ];
+}
+
+export function buildScopeOptions(techniques: TechniqueCoverage[]) {
+  const seen = new Map<string, CoverageScope>();
+
+  for (const technique of techniques) {
+    for (const scope of technique.relevant_scopes) {
+      if (!seen.has(scope.coverage_scope.code)) {
+        seen.set(scope.coverage_scope.code, scope.coverage_scope);
+      }
+    }
+  }
+
+  return [
+    { code: "all", name: "All scopes" },
+    ...Array.from(seen.values())
+      .sort((left, right) => left.name.localeCompare(right.name))
+      .map((scope) => ({ code: scope.code, name: scope.name })),
   ];
 }
 

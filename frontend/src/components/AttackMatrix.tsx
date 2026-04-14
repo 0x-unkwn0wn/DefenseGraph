@@ -4,20 +4,29 @@ import type { DerivedTechnique } from "../types";
 import { TechniqueCell } from "./TechniqueCell";
 
 interface AttackMatrixProps {
+  hideEmptyTactics?: boolean;
   selectedTechniqueCode: string | null;
   techniques: DerivedTechnique[];
   onSelect: (technique: DerivedTechnique) => void;
 }
 
 export function AttackMatrix({
+  hideEmptyTactics = false,
   selectedTechniqueCode,
   techniques,
   onSelect,
 }: AttackMatrixProps) {
+  const visibleTactics = tacticOrder.filter((tactic) =>
+    !hideEmptyTactics || techniques.some((technique) => technique.tactic === tactic),
+  );
+
   return (
     <div className="matrix-scroll">
       <div className="matrix-grid">
-        {tacticOrder.map((tactic) => {
+        {visibleTactics.length === 0 ? (
+          <div className="matrix-global-empty">No techniques match the current filters.</div>
+        ) : null}
+        {visibleTactics.map((tactic) => {
           const tacticTechniques = techniques.filter((technique) => technique.tactic === tactic);
 
           return (

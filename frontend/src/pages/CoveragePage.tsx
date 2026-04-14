@@ -6,6 +6,7 @@ import { TechniqueDetailPanel } from "../components/TechniqueDetailPanel";
 import {
   buildCounters,
   buildDisplayGroupCounters,
+  buildScopeOptions,
   buildTechniqueStates,
   buildToolOptions,
   filterTechniqueStates,
@@ -23,6 +24,7 @@ const coverageOptions: CoverageType[] = ["none", "detect", "block", "prevent"];
 export function CoveragePage({ capabilities, coverage, tools }: CoveragePageProps) {
   const [selectedToolId, setSelectedToolId] = useState<number | "all">("all");
   const [selectedCoverage, setSelectedCoverage] = useState<CoverageType[]>(coverageOptions);
+  const [selectedScope, setSelectedScope] = useState<string>("all");
   const [showOnlyGaps, setShowOnlyGaps] = useState(false);
   const [showExtendedTechniques, setShowExtendedTechniques] = useState(false);
   const [selectedTechniqueCode, setSelectedTechniqueCode] = useState<string | null>(null);
@@ -35,10 +37,16 @@ export function CoveragePage({ capabilities, coverage, tools }: CoveragePageProp
   const scopedTechniques = techniqueStates.filter(
     (technique) => showExtendedTechniques || technique.display_group === "core",
   );
-  const visibleTechniques = filterTechniqueStates(scopedTechniques, selectedCoverage, showOnlyGaps);
+  const visibleTechniques = filterTechniqueStates(
+    scopedTechniques,
+    selectedCoverage,
+    showOnlyGaps,
+    selectedScope,
+  );
   const counters = buildCounters(scopedTechniques);
   const groupCounters = buildDisplayGroupCounters(techniqueStates);
   const toolOptions = buildToolOptions(tools);
+  const scopeOptions = buildScopeOptions(coverage);
   const activeTechnique =
     visibleTechniques.find((technique) => technique.technique_code === selectedTechniqueCode) ?? null;
 
@@ -129,6 +137,21 @@ export function CoveragePage({ capabilities, coverage, tools }: CoveragePageProp
                 {toolOptions.map((tool) => (
                   <option key={tool.id} value={tool.id}>
                     {tool.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <label className="filter-field">
+              <span>Scope</span>
+              <select
+                className="text-input"
+                value={selectedScope}
+                onChange={(event) => setSelectedScope(event.target.value)}
+              >
+                {scopeOptions.map((scope) => (
+                  <option key={scope.code} value={scope.code}>
+                    {scope.name}
                   </option>
                 ))}
               </select>
@@ -244,6 +267,9 @@ export function CoveragePage({ capabilities, coverage, tools }: CoveragePageProp
         </div>
 
         <AttackMatrix
+          hideEmptyTactics={
+            showOnlyGaps || selectedScope !== "all" || selectedToolId !== "all" || selectedCoverage.length !== coverageOptions.length
+          }
           techniques={visibleTechniques}
           selectedTechniqueCode={selectedTechniqueCode}
           onSelect={handleSelectTechnique}
