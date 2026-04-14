@@ -4,6 +4,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session, joinedload
 
 from app.models import (
+    BASValidation,
     Capability,
     CapabilityRequiredDataSource,
     CapabilitySupportedResponseAction,
@@ -18,6 +19,7 @@ from app.models import (
     ToolResponseAction,
 )
 from app.schemas import (
+    BASValidationRead,
     TechniqueCoverageContributionRead,
     TechniqueCoverageRead,
     TechniqueCoverageResponseActionRead,
@@ -42,7 +44,7 @@ class TechniqueContribution:
     tool_id: int
     tool_name: str
     tool_category: str
-    tool_type: str
+    tool_types: list[str]
     capability_id: int
     capability_code: str
     capability_name: str
@@ -118,16 +120,20 @@ def compute_coverage(db: Session) -> list[TechniqueCoverageRead]:
             .joinedload(Capability.tool_capabilities)
             .joinedload(ToolCapability.scopes)
             .joinedload(ToolCapabilityScope.coverage_scope),
+            # BAS validations are assurance records, not active control contributions.
+            joinedload(Technique.bas_validations).joinedload(BASValidation.bas_tool),
         )
         .order_by(Technique.code)
     )
     techniques = db.execute(statement).unique().scalars().all()
-    response_tools = db.execute(
+    # A tool is a response tool if "response" is among its types.
+    # SQLite JSON: use JSON_EACH or just load all and filter in Python.
+    all_tools_with_response = db.execute(
         select(Tool)
         .options(joinedload(Tool.response_actions).joinedload(ToolResponseAction.response_action))
-        .where(Tool.tool_type == "response")
         .order_by(Tool.name)
     ).unique().scalars().all()
+    response_tools = [t for t in all_tools_with_response if "response" in t.tool_types]
 
     return [_build_technique_coverage_row(technique, response_tools) for technique in techniques]
 
@@ -204,10 +210,23 @@ def _build_technique_coverage_row(technique: Technique, response_tools: list[Too
         *(["Response without upstream detection"] if is_gap_response_without_detection else []),
     ]
 
+    bas_validation_reads = _build_bas_validations(technique)
+    bas_validated = any(v.bas_result != "not_tested" for v in bas_validation_reads)
+    # Most recent result — prefer the most recent validation date; fall back to
+    # the last entry if no date is recorded.
+    latest_bas = (
+        max(
+            (v for v in bas_validation_reads if v.bas_result != "not_tested"),
+            key=lambda v: v.last_validation_date or "",
+            default=None,
+        )
+    )
+
     return TechniqueCoverageRead(
         technique_id=technique.id,
         technique_code=technique.code,
         technique_name=technique.name,
+        attack_url=f"https://attack.mitre.org/techniques/{technique.code.replace('.', '/')}/",
         coverage_type=direct_effect,
         effective_control_effect=direct_effect,
         effective_outcome=effective_outcome,
@@ -236,7 +255,7 @@ def _build_technique_coverage_row(technique: Technique, response_tools: list[Too
                 tool_id=contribution.tool_id,
                 tool_name=contribution.tool_name,
                 tool_category=contribution.tool_category,
-                tool_type=contribution.tool_type,
+                tool_types=contribution.tool_types,
                 capability_id=contribution.capability_id,
                 capability_code=contribution.capability_code,
                 capability_name=contribution.capability_name,
@@ -272,6 +291,10 @@ def _build_technique_coverage_row(technique: Technique, response_tools: list[Too
             for link in sorted(technique.relevant_scopes, key=lambda item: (item.relevance, item.coverage_scope.name))
         ],
         scope_summary=ScopeSummaryRead(**scope_summary),
+        bas_validations=bas_validation_reads,
+        bas_validated=bas_validated,
+        bas_result=latest_bas.bas_result if latest_bas else None,
+        last_bas_validation_date=latest_bas.last_validation_date if latest_bas else None,
         is_gap_no_coverage=is_gap_no_coverage,
         is_gap_detect_only=is_gap_detect_only,
         is_gap_partial=is_gap_partial,
@@ -310,7 +333,12 @@ def _collect_contributions_for_technique(
             ):
                 continue
 
-            if tool_capability.tool.tool_type == "response":
+            # A tool contributes to active coverage only if it has "control"
+            # or "analytics" among its types.  Tools that are purely
+            # "response" or "assurance" (BAS) are handled elsewhere.
+            tool_types = tool_capability.tool.tool_types
+            is_active = any(t in tool_types for t in ("control", "analytics"))
+            if not is_active:
                 continue
 
             dependency_warnings: list[str] = []
@@ -326,7 +354,10 @@ def _collect_contributions_for_technique(
             elif degraded_by_configuration:
                 partially_configured_flags.extend(configuration_warnings)
 
-            if tool_capability.tool.tool_type == "analytics":
+            # If the tool is analytics (and NOT also a control), force "detect".
+            # A tool with ["control", "analytics"] uses its configured effect.
+            is_analytics_only = "analytics" in tool_types and "control" not in tool_types
+            if is_analytics_only:
                 dependency_result = _evaluate_analytics_dependencies(tool_capability)
                 dependency_warnings.extend(dependency_result["warnings"])
                 if dependency_result["blocked"]:
@@ -365,7 +396,7 @@ def _collect_contributions_for_technique(
             summary = calculate_confidence(tool_capability, total_questions)
             confidence_level = summary.confidence_level
             confidence_source = summary.confidence_source
-            if tool_capability.tool.tool_type == "analytics" and dependency_warnings:
+            if is_analytics_only and dependency_warnings:
                 confidence_level = "low"
                 if summary.confidence_source == "declared":
                     confidence_source = "declared"
@@ -381,7 +412,7 @@ def _collect_contributions_for_technique(
                     tool_id=tool_capability.tool_id,
                     tool_name=tool_capability.tool.name,
                     tool_category=tool_capability.tool.category,
-                    tool_type=tool_capability.tool.tool_type,
+                    tool_types=list(tool_capability.tool.tool_types),
                     capability_id=capability.id,
                     capability_code=capability.code,
                     capability_name=capability.name,
@@ -605,6 +636,24 @@ def _aggregate_confidence(contributions: list[TechniqueContribution]) -> str:
             SOURCE_RANK[contribution.confidence_source],
         ),
     ).confidence_level
+
+
+def _build_bas_validations(technique: Technique) -> list[BASValidationRead]:
+    """Convert the technique's BAS validation ORM records to schema objects."""
+    result: list[BASValidationRead] = []
+    for v in technique.bas_validations:
+        result.append(
+            BASValidationRead(
+                id=v.id,
+                technique_id=v.technique_id,
+                bas_tool_id=v.bas_tool_id,
+                bas_tool_name=v.bas_tool.name if v.bas_tool else None,
+                bas_result=v.bas_result,
+                last_validation_date=v.last_validation_date,
+                notes=v.notes,
+            )
+        )
+    return result
 
 
 def _build_coverage_status(

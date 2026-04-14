@@ -58,6 +58,12 @@ class Technique(Base):
         back_populates="technique",
         cascade="all, delete-orphan",
     )
+    bas_validations = relationship(
+        "BASValidation",
+        back_populates="technique",
+        cascade="all, delete-orphan",
+        order_by="BASValidation.last_validation_date.desc()",
+    )
 
 
 class CapabilityTechniqueMap(Base):
@@ -78,7 +84,8 @@ class Tool(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
     name: Mapped[str] = mapped_column(String(255), unique=True, nullable=False)
     category: Mapped[str] = mapped_column(String(50), nullable=False, default="Other")
-    tool_type: Mapped[str] = mapped_column(String(20), nullable=False, default="control")
+    # A tool can have multiple roles simultaneously (e.g. ["control", "assurance"]).
+    tool_types: Mapped[list[str]] = mapped_column(JSON, nullable=False, default=lambda: ["control"])
     tags: Mapped[list[str]] = mapped_column(JSON, nullable=False, default=list)
 
     capabilities = relationship("ToolCapability", back_populates="tool", cascade="all, delete-orphan")
@@ -437,3 +444,26 @@ class ToolCapabilityConfigurationAnswer(Base):
         ),
     )
     question_ref = relationship("CapabilityConfigurationQuestion", back_populates="answers")
+
+
+class BASValidation(Base):
+    """Per-technique BAS (Breach and Attack Simulation) test result.
+
+    BAS is a cross-functional assurance capability, not an active security
+    control.  These records track whether a specific TTP has been validated
+    by a BAS tool and what the outcome was.
+    """
+
+    __tablename__ = "bas_validations"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    technique_id: Mapped[int] = mapped_column(ForeignKey("techniques.id"), nullable=False, index=True)
+    # Optional reference to the BAS tool that ran the test (tool_type == "assurance")
+    bas_tool_id: Mapped[int | None] = mapped_column(ForeignKey("tools.id"), nullable=True, index=True)
+    # "blocked" | "detected" | "not_detected" | "not_tested"
+    bas_result: Mapped[str] = mapped_column(String(20), nullable=False, default="not_tested")
+    last_validation_date: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    notes: Mapped[str] = mapped_column(Text, nullable=False, default="")
+
+    technique = relationship("Technique", back_populates="bas_validations")
+    bas_tool = relationship("Tool", foreign_keys=[bas_tool_id])

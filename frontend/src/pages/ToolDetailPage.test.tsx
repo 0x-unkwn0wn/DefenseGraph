@@ -124,7 +124,7 @@ describe("ToolDetailPage", () => {
             id: 1,
             name: "Mail Gateway",
             category: "Email",
-            tool_type: "control",
+            tool_types: ["control"],
             tags: ["Email Security", "Phishing"],
             capabilities: [
               {
@@ -197,7 +197,7 @@ describe("ToolDetailPage", () => {
             id: 2,
             name: "QRadar",
             category: "Security Analytics",
-            tool_type: "analytics",
+            tool_types: ["analytics"],
             tags: ["Log Analytics"],
             capabilities: [],
             data_sources: [
@@ -262,7 +262,7 @@ describe("ToolDetailPage", () => {
             id: 3,
             name: "XSOAR",
             category: "SOAR",
-            tool_type: "response",
+            tool_types: ["response"],
             tags: ["Incident Response"],
             capabilities: [],
             data_sources: [],

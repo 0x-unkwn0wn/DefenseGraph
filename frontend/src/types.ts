@@ -20,7 +20,15 @@ export type ToolCategory =
   | "Security Analytics"
   | "SOAR"
   | "Other";
-export type ToolType = "control" | "analytics" | "response";
+// "assurance" captures BAS and other validation tools.  These do NOT
+// contribute to active coverage — they only validate existing controls.
+export type ToolType = "control" | "analytics" | "response" | "assurance";
+
+// Primary function label for active control tools.
+export type ControlFunction = "Prevent" | "Detect" | "Respond";
+
+// BAS test outcome for a specific TTP.
+export type BASResult = "blocked" | "detected" | "not_detected" | "not_tested";
 export type ToolTag = string;
 export type TemplatePriority = "core" | "secondary" | "niche";
 export type SuggestionGroup = "core" | "recommended" | "optional";
@@ -187,7 +195,7 @@ export interface Tool {
   id: number;
   name: string;
   category: ToolCategory;
-  tool_type: ToolType;
+  tool_types: ToolType[];
   tags: ToolTag[];
   capabilities: ToolCapability[];
   data_sources: ToolDataSource[];
@@ -215,7 +223,7 @@ export interface CapabilityImplementingTool {
   tool_id: number;
   tool_name: string;
   tool_category: ToolCategory;
-  tool_type: ToolType;
+  tool_types: ToolType[];
   control_effect: ControlEffect;
   implementation_level: ImplementationLevel;
   confidence_source: ConfidenceSource;
@@ -282,10 +290,42 @@ export interface ToolCapabilityTemplate {
   suggestion_group: SuggestionGroup;
 }
 
+/** BAS validation record for a single TTP.
+ *
+ * BAS is a cross-functional assurance capability — NOT an active control.
+ * These records capture whether an adversary simulation confirmed or
+ * bypassed existing controls for a given technique.
+ */
+export interface BASValidation {
+  id: number;
+  technique_id: number;
+  bas_tool_id: number | null;
+  bas_tool_name: string | null;
+  bas_result: BASResult;
+  last_validation_date: string | null;
+  notes: string;
+}
+
+/** Active security control tool (tool_type != 'assurance').
+ *
+ * BAS tools are intentionally excluded — they are validation tools, not
+ * active controls classified under Prevent / Detect / Respond.
+ */
+export interface ControlRead {
+  tool_id: number;
+  tool_name: string;
+  primary_category: string;
+  tool_types: ToolType[];
+  primary_function: ControlFunction;
+  covered_ttp_ids: string[];
+}
+
 export interface TechniqueCoverage {
   technique_id: number;
   technique_code: string;
   technique_name: string;
+  /** Direct link to the MITRE ATT&CK page for this technique. */
+  attack_url: string;
   coverage_type: CoverageType;
   effective_control_effect: CoverageType;
   effective_outcome: EffectiveOutcome;
@@ -298,6 +338,11 @@ export interface TechniqueCoverage {
   contributing_tools: TechniqueCoverageContribution[];
   relevant_scopes: TechniqueRelevantScope[];
   scope_summary: ScopeSummary;
+  /** BAS assurance fields — separate from active coverage. */
+  bas_validations: BASValidation[];
+  bas_validated: boolean;
+  bas_result: BASResult | null;
+  last_bas_validation_date: string | null;
   is_gap_no_coverage: boolean;
   is_gap_detect_only: boolean;
   is_gap_partial: boolean;
@@ -325,7 +370,7 @@ export interface CapabilityContribution {
   confidenceSource: ConfidenceSource;
   confidenceLevel: ConfidenceLevel;
   toolCategory: ToolCategory;
-  toolType: ToolType;
+  toolTypes: ToolType[];
   dependencyWarnings: string[];
   configurationStatus: ConfigurationStatus | null;
   effectivelyActive: boolean;
@@ -336,7 +381,7 @@ export interface TechniqueCoverageContribution {
   tool_id: number;
   tool_name: string;
   tool_category: ToolCategory;
-  tool_type: ToolType;
+  tool_types: ToolType[];
   capability_id: number;
   capability_code: string;
   capability_name: string;

@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session, joinedload
 from app.database import BASE_DIR, Base, SessionLocal, engine
 from app.migration import migrate_legacy_database
 from app.models import (
+    BASValidation,
     Capability,
     CapabilityAssessmentTemplate,
     CapabilityConfigurationQuestion,
@@ -32,6 +33,9 @@ from app.models import (
 )
 from app.schemas import (
     AssessmentTemplateRead,
+    BASValidationCreate,
+    BASValidationRead,
+    BASValidationUpdate,
     CapabilityDetailRead,
     CapabilityImplementingToolRead,
     CapabilityRequiredDataSourceRead,
@@ -40,6 +44,7 @@ from app.schemas import (
     CapabilitySupportedResponseActionRead,
     CapabilityTechniqueMapRead,
     ConfidenceSummaryRead,
+    ControlRead,
     CoverageScopeRead,
     ConfigurationSummaryRead,
     DataSourceRead,
@@ -220,7 +225,7 @@ def serialize_tool(tool: Tool) -> ToolRead:
         id=tool.id,
         name=tool.name,
         category=tool.category,
-        tool_type=tool.tool_type,
+        tool_types=list(tool.tool_types),
         tags=tool.tags,
         capabilities=[
             serialize_tool_capability_read(assignment)
@@ -518,7 +523,7 @@ def _serialize_capability_implementing_tool(assignment: ToolCapability) -> Capab
         tool_id=assignment.tool_id,
         tool_name=assignment.tool.name,
         tool_category=assignment.tool.category,
-        tool_type=assignment.tool.tool_type,
+        tool_types=list(assignment.tool.tool_types),
         control_effect=assignment.control_effect,
         implementation_level=assignment.implementation_level,
         confidence_source=summary.confidence_source,
@@ -549,7 +554,7 @@ def create_tool(payload: ToolCreate, db: Session = Depends(get_db)):
     tool = Tool(
         name=payload.name.strip(),
         category=payload.category,
-        tool_type=payload.tool_type,
+        tool_types=list(dict.fromkeys(payload.tool_types)),  # deduplicate, preserve order
         tags=normalize_tags(payload.tags),
     )
     db.add(tool)
@@ -974,3 +979,225 @@ def create_tool_capability_evidence(
 @app.get("/coverage")
 def get_coverage(db: Session = Depends(get_db)):
     return compute_coverage(db)
+
+
+# ---------------------------------------------------------------------------
+# Controls endpoint
+# Returns only active security control tools (tool_type != "assurance").
+# BAS tools are excluded by design — they are cross-functional validation
+# tools, not active controls.
+# ---------------------------------------------------------------------------
+
+CONTROL_EFFECT_PRIORITY = {"none": 0, "detect": 1, "block": 2, "prevent": 3}
+
+
+def _derive_primary_function(tool: Tool) -> str:
+    """Return 'Prevent', 'Detect', or 'Respond' for a tool.
+
+    Priority: if any type is 'control' → look at strongest effect;
+    if analytics-only → Detect; if response-only → Respond.
+    """
+    types = set(tool.tool_types)
+    if "control" in types:
+        strongest = max(
+            (tc.control_effect for tc in tool.capabilities if tc.control_effect != "none"),
+            key=lambda e: CONTROL_EFFECT_PRIORITY[e],
+            default=None,
+        )
+        if strongest in ("block", "prevent"):
+            return "Prevent"
+        return "Detect"
+    if "response" in types:
+        return "Respond"
+    if "analytics" in types:
+        return "Detect"
+    return "Prevent"
+
+
+def _is_active_control(tool: Tool) -> bool:
+    """True when the tool has at least one active role (not purely assurance)."""
+    return any(t in tool.tool_types for t in ("control", "analytics", "response"))
+
+
+@app.get("/controls", response_model=list[ControlRead])
+def list_controls(db: Session = Depends(get_db)):
+    """List all active security controls with their primary function and covered TTPs.
+
+    Tools that are ONLY 'assurance' are excluded.  A tool with
+    tool_types=['control','assurance'] IS included because it has an active
+    control role in addition to its BAS/assurance capability.
+    """
+    statement = (
+        select(Tool)
+        .options(
+            joinedload(Tool.capabilities)
+            .joinedload(ToolCapability.capability)
+            .joinedload(Capability.technique_maps)
+            .joinedload(CapabilityTechniqueMap.technique),
+        )
+        .order_by(Tool.name)
+    )
+    all_tools = db.execute(statement).unique().scalars().all()
+    controls: list[ControlRead] = []
+    for tool in all_tools:
+        if not _is_active_control(tool):
+            continue
+        ttp_ids: list[str] = sorted(
+            {
+                technique_map.technique.code
+                for tc in tool.capabilities
+                for technique_map in tc.capability.technique_maps
+                if tc.control_effect != "none" and tc.implementation_level != "none"
+            }
+        )
+        controls.append(
+            ControlRead(
+                tool_id=tool.id,
+                tool_name=tool.name,
+                primary_category=tool.category,
+                tool_types=list(tool.tool_types),
+                primary_function=_derive_primary_function(tool),
+                covered_ttp_ids=ttp_ids,
+            )
+        )
+    return controls
+
+
+# ---------------------------------------------------------------------------
+# BAS Validation endpoints
+# BAS is a cross-functional assurance/validation capability — not an active
+# control.  These endpoints record BAS test outcomes per technique (TTP).
+# ---------------------------------------------------------------------------
+
+
+def _get_technique_or_404(db: Session, technique_id: int) -> Technique:
+    technique = db.get(Technique, technique_id)
+    if technique is None:
+        raise HTTPException(status_code=404, detail="Technique not found")
+    return technique
+
+
+def _serialize_bas_validation(v: BASValidation) -> BASValidationRead:
+    return BASValidationRead(
+        id=v.id,
+        technique_id=v.technique_id,
+        bas_tool_id=v.bas_tool_id,
+        bas_tool_name=v.bas_tool.name if v.bas_tool else None,
+        bas_result=v.bas_result,
+        last_validation_date=v.last_validation_date,
+        notes=v.notes,
+    )
+
+
+@app.get("/techniques/{technique_id}/bas-validations", response_model=list[BASValidationRead])
+def list_bas_validations(technique_id: int, db: Session = Depends(get_db)):
+    """List all BAS validation records for a technique (TTP).
+
+    Returns assurance/validation results from BAS tools.  These records do
+    NOT affect active coverage — they only reflect whether an adversary
+    simulation confirmed or bypassed the existing controls.
+    """
+    _get_technique_or_404(db, technique_id)
+    statement = (
+        select(BASValidation)
+        .options(joinedload(BASValidation.bas_tool))
+        .where(BASValidation.technique_id == technique_id)
+        .order_by(BASValidation.last_validation_date.desc(), BASValidation.id.desc())
+    )
+    return [_serialize_bas_validation(v) for v in db.execute(statement).scalars().all()]
+
+
+@app.post("/techniques/{technique_id}/bas-validations", response_model=BASValidationRead, status_code=201)
+def create_bas_validation(
+    technique_id: int,
+    payload: BASValidationCreate,
+    db: Session = Depends(get_db),
+):
+    """Record a BAS test result for a specific technique (TTP).
+
+    The bas_tool_id must reference a tool with tool_type == 'assurance'.
+    Providing a control-type tool ID is rejected to enforce the separation
+    between active controls and assurance tooling.
+    """
+    _get_technique_or_404(db, technique_id)
+    if payload.bas_tool_id is not None:
+        bas_tool = db.get(Tool, payload.bas_tool_id)
+        if bas_tool is None:
+            raise HTTPException(status_code=404, detail="BAS tool not found")
+        if "assurance" not in bas_tool.tool_types:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    f"Tool '{bas_tool.name}' does not have 'assurance' in its tool_types "
+                    f"(current: {bas_tool.tool_types}). "
+                    "Only tools with 'assurance' among their types may be used as BAS tools."
+                ),
+            )
+
+    validation = BASValidation(
+        technique_id=technique_id,
+        bas_tool_id=payload.bas_tool_id,
+        bas_result=payload.bas_result,
+        last_validation_date=payload.last_validation_date,
+        notes=payload.notes.strip(),
+    )
+    db.add(validation)
+    db.commit()
+    db.refresh(validation)
+    # Reload with relationship
+    v = db.execute(
+        select(BASValidation).options(joinedload(BASValidation.bas_tool)).where(BASValidation.id == validation.id)
+    ).scalar_one()
+    return _serialize_bas_validation(v)
+
+
+@app.put("/bas-validations/{validation_id}", response_model=BASValidationRead)
+def update_bas_validation(
+    validation_id: int,
+    payload: BASValidationUpdate,
+    db: Session = Depends(get_db),
+):
+    """Update an existing BAS validation record."""
+    validation = db.execute(
+        select(BASValidation).options(joinedload(BASValidation.bas_tool)).where(BASValidation.id == validation_id)
+    ).scalar_one_or_none()
+    if validation is None:
+        raise HTTPException(status_code=404, detail="BAS validation not found")
+
+    if payload.bas_tool_id is not None:
+        bas_tool = db.get(Tool, payload.bas_tool_id)
+        if bas_tool is None:
+            raise HTTPException(status_code=404, detail="BAS tool not found")
+        if "assurance" not in bas_tool.tool_types:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    f"Tool '{bas_tool.name}' does not have 'assurance' in its tool_types "
+                    f"(current: {bas_tool.tool_types}). "
+                    "Only tools with 'assurance' among their types may be used as BAS tools."
+                ),
+            )
+        validation.bas_tool_id = payload.bas_tool_id
+
+    if payload.bas_result is not None:
+        validation.bas_result = payload.bas_result
+    if payload.last_validation_date is not None:
+        validation.last_validation_date = payload.last_validation_date
+    if payload.notes is not None:
+        validation.notes = payload.notes.strip()
+
+    db.commit()
+    v = db.execute(
+        select(BASValidation).options(joinedload(BASValidation.bas_tool)).where(BASValidation.id == validation_id)
+    ).scalar_one()
+    return _serialize_bas_validation(v)
+
+
+@app.delete("/bas-validations/{validation_id}", status_code=204)
+def delete_bas_validation(validation_id: int, db: Session = Depends(get_db)):
+    """Delete a BAS validation record."""
+    validation = db.get(BASValidation, validation_id)
+    if validation is None:
+        raise HTTPException(status_code=404, detail="BAS validation not found")
+    db.delete(validation)
+    db.commit()

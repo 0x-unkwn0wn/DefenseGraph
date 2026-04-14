@@ -1,7 +1,10 @@
 import type {
   AssessmentAnswerValue,
+  BASResult,
+  BASValidation,
   Capability,
   CapabilityDetail,
+  ControlRead,
   CoverageScope,
   ConfigurationAnswerValue,
   ControlEffect,
@@ -47,10 +50,10 @@ export function listTools() {
   return request<Tool[]>("/tools");
 }
 
-export function createTool(name: string, category: ToolCategory, toolType: ToolType, tags: string[]) {
+export function createTool(name: string, category: ToolCategory, toolTypes: ToolType[], tags: string[]) {
   return request<Tool>("/tools", {
     method: "POST",
-    body: JSON.stringify({ name, category, tool_type: toolType, tags }),
+    body: JSON.stringify({ name, category, tool_types: toolTypes, tags }),
   });
 }
 
@@ -232,4 +235,60 @@ export function listToolCapabilityEvidence(toolId: number, capabilityId: number)
 
 export function listCoverage() {
   return request<TechniqueCoverage[]>("/coverage");
+}
+
+// ---------------------------------------------------------------------------
+// Controls — active security controls (excludes BAS / assurance tools)
+// ---------------------------------------------------------------------------
+
+export function listControls() {
+  return request<ControlRead[]>("/controls");
+}
+
+// ---------------------------------------------------------------------------
+// BAS Validations
+// BAS is a cross-functional assurance/validation capability.  These calls
+// record and retrieve BAS test outcomes per technique (TTP).  BAS results
+// do NOT affect the active coverage computation — they only reflect whether
+// adversary simulation confirmed or bypassed the existing controls.
+// ---------------------------------------------------------------------------
+
+export function listBASValidations(techniqueId: number) {
+  return request<BASValidation[]>(`/techniques/${techniqueId}/bas-validations`);
+}
+
+export function createBASValidation(
+  techniqueId: number,
+  payload: {
+    bas_tool_id: number | null;
+    bas_result: BASResult;
+    last_validation_date: string | null;
+    notes?: string;
+  },
+) {
+  return request<BASValidation>(`/techniques/${techniqueId}/bas-validations`, {
+    method: "POST",
+    body: JSON.stringify({ technique_id: techniqueId, ...payload }),
+  });
+}
+
+export function updateBASValidation(
+  validationId: number,
+  payload: {
+    bas_tool_id?: number | null;
+    bas_result?: BASResult;
+    last_validation_date?: string | null;
+    notes?: string;
+  },
+) {
+  return request<BASValidation>(`/bas-validations/${validationId}`, {
+    method: "PUT",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function deleteBASValidation(validationId: number) {
+  return request<void>(`/bas-validations/${validationId}`, {
+    method: "DELETE",
+  });
 }

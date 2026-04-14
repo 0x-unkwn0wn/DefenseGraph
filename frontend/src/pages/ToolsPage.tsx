@@ -17,7 +17,7 @@ interface ToolsPageProps {
   onCreateTool: (
     name: string,
     category: ToolCategory,
-    toolType: ToolType,
+    toolTypes: ToolType[],
     tags: ToolTag[],
     selectedTemplates: Array<{
       template: ToolCapabilityTemplate;
@@ -41,24 +41,26 @@ const toolCategories: ToolCategory[] = [
   "Other",
 ];
 
-const defaultToolTypesByCategory: Record<ToolCategory, ToolType> = {
-  EDR: "control",
-  PAM: "control",
-  DLP: "control",
-  SASE: "control",
-  DNS: "control",
-  Email: "control",
-  BAS: "control",
-  Identity: "control",
-  "Security Analytics": "analytics",
-  SOAR: "response",
-  Other: "control",
+const ALL_TOOL_TYPES: ToolType[] = ["control", "analytics", "response", "assurance"];
+
+const defaultToolTypesByCategory: Record<ToolCategory, ToolType[]> = {
+  EDR: ["control"],
+  PAM: ["control"],
+  DLP: ["control"],
+  SASE: ["control"],
+  DNS: ["control"],
+  Email: ["control"],
+  BAS: ["assurance"],
+  Identity: ["control"],
+  "Security Analytics": ["analytics"],
+  SOAR: ["response"],
+  Other: ["control"],
 };
 
 export function ToolsPage({ tools, onCreateTool, onDeleteTool }: ToolsPageProps) {
   const [name, setName] = useState("");
   const [category, setCategory] = useState<ToolCategory>("Other");
-  const [toolType, setToolType] = useState<ToolType>("control");
+  const [toolTypes, setToolTypes] = useState<ToolType[]>(["control"]);
   const [tagCatalog, setTagCatalog] = useState<ToolTagDefinition[]>([]);
   const [selectedTags, setSelectedTags] = useState<ToolTag[]>([]);
   const [customTag, setCustomTag] = useState("");
@@ -94,7 +96,7 @@ export function ToolsPage({ tools, onCreateTool, onDeleteTool }: ToolsPageProps)
   function resetWizard() {
     setName("");
     setCategory("Other");
-    setToolType("control");
+    setToolTypes(["control"]);
     setSelectedTags([]);
     setCustomTag("");
     setTemplates(null);
@@ -155,7 +157,7 @@ export function ToolsPage({ tools, onCreateTool, onDeleteTool }: ToolsPageProps)
           controlEffect: templateEffects[template.id] ?? template.default_effect,
         }));
 
-      await onCreateTool(name.trim(), category, toolType, selectedTags, selected);
+      await onCreateTool(name.trim(), category, toolTypes, selectedTags, selected);
       resetWizard();
     } finally {
       setIsSubmitting(false);
@@ -165,7 +167,7 @@ export function ToolsPage({ tools, onCreateTool, onDeleteTool }: ToolsPageProps)
   async function handleSkipSuggestions() {
     setIsSubmitting(true);
     try {
-      await onCreateTool(name.trim(), category, toolType, selectedTags, []);
+      await onCreateTool(name.trim(), category, toolTypes, selectedTags, []);
       resetWizard();
     } finally {
       setIsSubmitting(false);
@@ -217,7 +219,7 @@ export function ToolsPage({ tools, onCreateTool, onDeleteTool }: ToolsPageProps)
                   onChange={(event) => {
                     const nextCategory = event.target.value as ToolCategory;
                     setCategory(nextCategory);
-                    setToolType(defaultToolTypesByCategory[nextCategory]);
+                    setToolTypes(defaultToolTypesByCategory[nextCategory]);
                   }}
                 >
                   {toolCategories.map((option) => (
@@ -227,18 +229,28 @@ export function ToolsPage({ tools, onCreateTool, onDeleteTool }: ToolsPageProps)
                   ))}
                 </select>
               </label>
-              <label className="filter-field">
-                <span>Tool type</span>
-                <select
-                  className="text-input"
-                  value={toolType}
-                  onChange={(event) => setToolType(event.target.value as ToolType)}
-                >
-                  <option value="control">control</option>
-                  <option value="analytics">analytics</option>
-                  <option value="response">response</option>
-                </select>
-              </label>
+              <div className="filter-field">
+                <span>Tool types (select all that apply)</span>
+                <div className="tag-chip-row">
+                  {ALL_TOOL_TYPES.map((t) => (
+                    <label key={t} className="tag-chip" style={{ cursor: "pointer" }}>
+                      <input
+                        type="checkbox"
+                        checked={toolTypes.includes(t)}
+                        onChange={(event) => {
+                          setToolTypes((prev) =>
+                            event.target.checked
+                              ? [...prev, t]
+                              : prev.filter((x) => x !== t),
+                          );
+                        }}
+                        style={{ marginRight: "4px" }}
+                      />
+                      {t}
+                    </label>
+                  ))}
+                </div>
+              </div>
               <button className="primary-button" type="submit">
                 Continue
               </button>
@@ -437,7 +449,7 @@ export function ToolsPage({ tools, onCreateTool, onDeleteTool }: ToolsPageProps)
                     <div>
                       <strong className="tool-card-title">{tool.name}</strong>
                       <p className="muted">
-                        {tool.category} | {tool.tool_type}
+                        {tool.category} | {tool.tool_types.join(", ")}
                       </p>
                       {tool.tags.length > 0 ? (
                         <div className="tag-chip-row compact">

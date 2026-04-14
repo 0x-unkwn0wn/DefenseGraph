@@ -42,7 +42,7 @@ def migrate_legacy_database(database_path: Path) -> None:
                 id=tool["id"],
                 name=tool["name"],
                 category=tool["category"],
-                tool_type=tool["tool_type"],
+                tool_types=tool["tool_types"],
                 tags=tool["tags"],
             )
             for tool in legacy_payload["tools"]
@@ -90,6 +90,8 @@ def _schema_is_current(connection: sqlite3.Connection) -> bool:
         "coverage_scopes",
         "tool_capability_scopes",
         "technique_relevant_scopes",
+        # BAS assurance validation table (added for BAS classification feature)
+        "bas_validations",
     }
     if not required_tables.issubset(_get_table_names(connection)):
         return False
@@ -100,7 +102,7 @@ def _schema_is_current(connection: sqlite3.Connection) -> bool:
 
     return (
         "category" in tool_columns
-        and "tool_type" in tool_columns
+        and "tool_types" in tool_columns  # JSON array (replaces old tool_type string)
         and "tags" in tool_columns
         and {
             "description",
@@ -112,6 +114,9 @@ def _schema_is_current(connection: sqlite3.Connection) -> bool:
         }.issubset(capability_columns)
         and {"id", "control_effect", "confidence_source", "confidence_level"}.issubset(tool_capability_columns)
         and {"optional_tags", "priority"}.issubset(_get_table_columns(connection, "tool_capability_templates"))
+        and {"bas_result", "technique_id", "last_validation_date"}.issubset(
+            _get_table_columns(connection, "bas_validations")
+        )
     )
 
 
@@ -130,10 +135,16 @@ def _extract_legacy_payload(connection: sqlite3.Connection) -> dict[str, list[di
                 if "category" in tool_columns
                 else "Other"
             ),
-            "tool_type": (
-                connection.execute("SELECT tool_type FROM tools WHERE id = ?", (tool_id,)).fetchone()[0]
-                if "tool_type" in tool_columns
-                else "control"
+            # Migrate old single tool_type string → list.
+            # Also handle new tool_types JSON column if already migrated partway.
+            "tool_types": (
+                [connection.execute("SELECT tool_type FROM tools WHERE id = ?", (tool_id,)).fetchone()[0]]
+                if "tool_type" in tool_columns and "tool_types" not in tool_columns
+                else (
+                    connection.execute("SELECT tool_types FROM tools WHERE id = ?", (tool_id,)).fetchone()[0]
+                    if "tool_types" in tool_columns
+                    else ["control"]
+                )
             ),
             "tags": [],
         }

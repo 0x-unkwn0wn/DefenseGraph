@@ -175,7 +175,7 @@ export function TechniqueDetailPanel({ technique, onClose }: TechniqueDetailPane
                   {
                     id: contribution.toolId,
                     name: contribution.toolName,
-                    type: contribution.toolType,
+                    type: contribution.toolTypes.join(", "),
                   },
                 ]),
               ).values(),
@@ -230,7 +230,7 @@ export function TechniqueDetailPanel({ technique, onClose }: TechniqueDetailPane
                   </span>
                 </div>
                 <p className="muted">
-                  {contribution.toolName} | {contribution.toolType} | configured {contribution.configuredEffect} |{" "}
+                  {contribution.toolName} | {contribution.toolTypes.join(", ")} | configured {contribution.configuredEffect} |{" "}
                   {contribution.implementationLevel} implementation | {contribution.confidenceLevel} confidence |{" "}
                   {contribution.mappingCoverage} mapping
                   {contribution.configurationStatus ? ` | config ${contribution.configurationStatus}` : ""}

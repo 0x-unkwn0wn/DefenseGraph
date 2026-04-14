@@ -41,7 +41,7 @@ describe("GapsPage", () => {
                 tool_id: 1,
                 tool_name: "Resolver Control",
                 tool_category: "DNS",
-                tool_type: "control",
+                tool_types: ["control"],
                 capability_id: 6,
                 capability_code: "CAP-006",
                 capability_name: "DNS C2 Control",
@@ -95,6 +95,11 @@ describe("GapsPage", () => {
             is_gap_partially_configured_control: true,
             is_gap_scope_missing: false,
             is_gap_scope_partial: false,
+            attack_url: "https://attack.mitre.org/techniques/T1071/004/",
+            bas_validations: [],
+            bas_validated: false,
+            bas_result: null,
+            last_bas_validation_date: null,
           },
         ]}
         tools={[
@@ -102,7 +107,7 @@ describe("GapsPage", () => {
             id: 1,
             name: "Resolver Control",
             category: "DNS",
-            tool_type: "control",
+            tool_types: ["control"],
             tags: ["DNS"],
             capabilities: [
               {
@@ -178,7 +183,7 @@ describe("GapsPage", () => {
                 tool_id: 1,
                 tool_name: "Resolver Control",
                 tool_category: "DNS",
-                tool_type: "control",
+                tool_types: ["control"],
                 capability_id: 6,
                 capability_code: "CAP-006",
                 capability_name: "DNS C2 Control",
@@ -232,6 +237,11 @@ describe("GapsPage", () => {
             is_gap_partially_configured_control: false,
             is_gap_scope_missing: false,
             is_gap_scope_partial: false,
+            attack_url: "https://attack.mitre.org/techniques/T1071/004/",
+            bas_validations: [],
+            bas_validated: false,
+            bas_result: null,
+            last_bas_validation_date: null,
           },
           {
             technique_id: 11,
@@ -272,6 +282,11 @@ describe("GapsPage", () => {
             is_gap_partially_configured_control: false,
             is_gap_scope_missing: true,
             is_gap_scope_partial: false,
+            attack_url: "https://attack.mitre.org/techniques/T1190/",
+            bas_validations: [],
+            bas_validated: false,
+            bas_result: null,
+            last_bas_validation_date: null,
           },
         ]}
         tools={[
@@ -279,7 +294,7 @@ describe("GapsPage", () => {
             id: 1,
             name: "Resolver Control",
             category: "DNS",
-            tool_type: "control",
+            tool_types: ["control"],
             tags: ["DNS"],
             capabilities: [
               {

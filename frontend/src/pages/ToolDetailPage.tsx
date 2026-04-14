@@ -319,7 +319,9 @@ export function ToolDetailPage({
           </div>
           <div className="workspace-badges">
             <span className="count-chip">{activeTool.category}</span>
-            <span className="count-chip">{activeTool.tool_type}</span>
+            {activeTool.tool_types.map((t) => (
+              <span key={t} className="count-chip">{t}</span>
+            ))}
           </div>
         </div>
         <div className="custom-tag-row">
@@ -365,7 +367,7 @@ export function ToolDetailPage({
         </div>
       </Card>
 
-      {activeTool.tool_type === "analytics" ? (
+      {activeTool.tool_types.includes("analytics") ? (
         <Card title="Data Sources" subtitle="Analytics dependencies">
           <p className="section-copy">
             Analytics tools only contribute credible coverage when the required data sources are actually ingested.
@@ -430,7 +432,7 @@ export function ToolDetailPage({
         </Card>
       ) : null}
 
-      {activeTool.tool_type === "response" ? (
+      {activeTool.tool_types.includes("response") ? (
         <Card title="Response Actions" subtitle="Operational response">
           <p className="section-copy">
             Response tools do not detect anything by themselves. They only strengthen coverage when upstream detections exist.
@@ -586,8 +588,8 @@ export function ToolDetailPage({
                     >
                       <option value="none">None</option>
                       <option value="detect">Detect</option>
-                      {activeTool.tool_type === "control" ? <option value="block">Block</option> : null}
-                      {activeTool.tool_type === "control" ? <option value="prevent">Prevent</option> : null}
+                      {activeTool.tool_types.includes("control") ? <option value="block">Block</option> : null}
+                      {activeTool.tool_types.includes("control") ? <option value="prevent">Prevent</option> : null}
                     </select>
                   </label>
 
