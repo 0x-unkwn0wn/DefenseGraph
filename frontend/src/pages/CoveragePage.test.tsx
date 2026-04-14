@@ -220,7 +220,7 @@ describe("CoveragePage", () => {
     expect(screen.getAllByText(/response/i).length).toBeGreaterThan(0);
   });
 
-  it("filters the matrix when show only gaps is enabled", async () => {
+  it("filters the matrix when show only critical gaps is enabled", async () => {
     const user = userEvent.setup();
 
     render(
@@ -340,7 +340,7 @@ describe("CoveragePage", () => {
     expect(screen.getByText("External Remote Services")).toBeInTheDocument();
     expect(screen.getByText("Command and Scripting Interpreter")).toBeInTheDocument();
 
-    await user.click(screen.getByLabelText(/show only gaps/i));
+    await user.click(screen.getByLabelText(/show only critical gaps/i));
 
     expect(screen.getByText("External Remote Services")).toBeInTheDocument();
     expect(screen.queryByText("Command and Scripting Interpreter")).not.toBeInTheDocument();

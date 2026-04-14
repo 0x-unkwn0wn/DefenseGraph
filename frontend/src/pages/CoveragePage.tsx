@@ -163,7 +163,7 @@ export function CoveragePage({ capabilities, coverage, tools }: CoveragePageProp
                 checked={showOnlyGaps}
                 onChange={(event) => setShowOnlyGaps(event.target.checked)}
               />
-              <span>Show only gaps</span>
+              <span>Show only critical gaps</span>
             </label>
 
             <label className="filter-toggle">
@@ -260,6 +260,8 @@ export function CoveragePage({ capabilities, coverage, tools }: CoveragePageProp
           <p className="section-copy compact-copy">
             {activeTechnique
               ? `Inspecting ${activeTechnique.technique_code}. Click the selected cell again to close detail.`
+              : showOnlyGaps
+                ? "Showing only techniques with no effective coverage. Detect-only and partial techniques are hidden in this mode."
               : showExtendedTechniques
                 ? "Showing Core and Extended techniques. Select a technique to inspect its coverage path, tools, and capabilities."
                 : "Showing Core techniques by default. Enable the Extended toggle for deeper coverage review."}

@@ -115,7 +115,7 @@ export function filterTechniqueStates(
 ) {
   return techniques.filter((technique) => {
     const matchesCoverage = coverageFilters.includes(technique.coverage_type);
-    const matchesGap = !showOnlyGaps || isGap(technique);
+    const matchesGap = !showOnlyGaps || isCriticalGap(technique);
     const matchesScope =
       scopeFilter === "all" ||
       technique.relevant_scopes.some((scope) => scope.coverage_scope.code === scopeFilter);
@@ -244,6 +244,10 @@ export function isGap(technique: DerivedTechnique) {
     technique.is_gap_scope_missing ||
     technique.is_gap_scope_partial
   );
+}
+
+export function isCriticalGap(technique: DerivedTechnique) {
+  return technique.is_gap_no_coverage;
 }
 
 export function buildCounters(techniques: DerivedTechnique[]) {
