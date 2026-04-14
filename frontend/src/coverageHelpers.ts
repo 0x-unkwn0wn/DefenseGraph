@@ -52,6 +52,12 @@ export function buildTechniqueStates({
         technique_id: row.technique_id,
         technique_code: row.technique_code,
         technique_name: row.technique_name,
+        // Preserve API-sourced fields that localCoverage would overwrite with defaults.
+        attack_url: row.attack_url,
+        bas_validations: row.bas_validations,
+        bas_validated: row.bas_validated,
+        bas_result: row.bas_result,
+        last_bas_validation_date: row.last_bas_validation_date,
         tactic,
         display_group: displayGroup,
         contributions: localCoverage.contributions,
