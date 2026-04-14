@@ -199,6 +199,12 @@ export function ToolDetailPage({
   }
 
   const ALL_TOOL_TYPES: ToolType[] = ["control", "analytics", "response", "assurance"];
+  const TOOL_TYPE_LABEL: Record<ToolType, string> = {
+    control: "control",
+    analytics: "analytics",
+    response: "response",
+    assurance: "Validated",
+  };
 
   function toggleToolType(type: ToolType) {
     setToolTypesDraft((current) =>
@@ -365,7 +371,7 @@ export function ToolDetailPage({
                   checked={toolTypesDraft.includes(type)}
                   onChange={() => toggleToolType(type)}
                 />
-                {type}
+                {TOOL_TYPE_LABEL[type]}
               </label>
             ))}
           </div>

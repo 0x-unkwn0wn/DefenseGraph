@@ -1,4 +1,11 @@
-import type { DerivedTechnique } from "../types";
+import type { DerivedTechnique, ToolType } from "../types";
+
+const TOOL_TYPE_LABEL: Record<ToolType, string> = {
+  control: "control",
+  analytics: "analytics",
+  response: "response",
+  assurance: "Validated",
+};
 
 interface TechniqueDetailPanelProps {
   technique: DerivedTechnique | null;
@@ -182,7 +189,7 @@ export function TechniqueDetailPanel({ technique, onClose }: TechniqueDetailPane
                   {
                     id: contribution.toolId,
                     name: contribution.toolName,
-                    type: contribution.toolTypes.join(", "),
+                    type: contribution.toolTypes.map((t) => TOOL_TYPE_LABEL[t]).join(", "),
                   },
                 ]),
               ).values(),
@@ -237,7 +244,7 @@ export function TechniqueDetailPanel({ technique, onClose }: TechniqueDetailPane
                   </span>
                 </div>
                 <p className="muted">
-                  {contribution.toolName} | {contribution.toolTypes.join(", ")} | configured {contribution.configuredEffect} |{" "}
+                  {contribution.toolName} | {contribution.toolTypes.map((t) => TOOL_TYPE_LABEL[t]).join(", ")} | configured {contribution.configuredEffect} |{" "}
                   {contribution.implementationLevel} implementation | {contribution.confidenceLevel} confidence |{" "}
                   {contribution.mappingCoverage} mapping
                   {contribution.configurationStatus ? ` | config ${contribution.configurationStatus}` : ""}

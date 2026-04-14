@@ -43,6 +43,13 @@ const toolCategories: ToolCategory[] = [
 
 const ALL_TOOL_TYPES: ToolType[] = ["control", "analytics", "response", "assurance"];
 
+const TOOL_TYPE_LABEL: Record<ToolType, string> = {
+  control: "control",
+  analytics: "analytics",
+  response: "response",
+  assurance: "Validated",
+};
+
 const defaultToolTypesByCategory: Record<ToolCategory, ToolType[]> = {
   EDR: ["control"],
   PAM: ["control"],
@@ -246,7 +253,7 @@ export function ToolsPage({ tools, onCreateTool, onDeleteTool }: ToolsPageProps)
                         }}
                         style={{ marginRight: "4px" }}
                       />
-                      {t}
+                      {TOOL_TYPE_LABEL[t]}
                     </label>
                   ))}
                 </div>
@@ -449,7 +456,7 @@ export function ToolsPage({ tools, onCreateTool, onDeleteTool }: ToolsPageProps)
                     <div>
                       <strong className="tool-card-title">{tool.name}</strong>
                       <p className="muted">
-                        {tool.category} | {tool.tool_types.join(", ")}
+                        {tool.category} | {tool.tool_types.map((t) => TOOL_TYPE_LABEL[t]).join(", ")}
                       </p>
                       {tool.tags.length > 0 ? (
                         <div className="tag-chip-row compact">
