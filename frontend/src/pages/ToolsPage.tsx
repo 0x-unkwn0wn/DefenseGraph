@@ -63,6 +63,7 @@ const PRODUCT_TYPE_OPTIONS = [
   "AD Audit / Monitoring",
   "SIEM",
   "NAC / Visibility Platform",
+  "Phishing",
 ] as const;
 
 const TOOL_TYPE_LABEL: Record<ToolType, string> = {
