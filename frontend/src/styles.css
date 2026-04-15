@@ -1479,6 +1479,7 @@ button {
 }
 
 .template-group {
+  container-type: inline-size;
   padding: 10px;
   border: 1px solid var(--border);
   background: #0d1218;
@@ -1494,7 +1495,7 @@ button {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 180px;
   gap: 12px;
-  align-items: center;
+  align-items: start;
   padding: 10px;
   border: 1px solid var(--border);
   background: #0f151c;
@@ -1525,9 +1526,26 @@ button {
 
 .template-item-meta {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 8px;
   justify-content: flex-end;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+
+.template-item-meta .level-select {
+  flex: 1 1 136px;
+  min-width: 0;
+}
+
+@container (max-width: 440px) {
+  .template-item {
+    grid-template-columns: 1fr;
+  }
+
+  .template-item-meta {
+    justify-content: flex-start;
+  }
 }
 
 .toggle-control {
