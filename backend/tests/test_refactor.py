@@ -74,7 +74,11 @@ class DefenseGraphConfidenceTests(unittest.TestCase):
     def _create_tool(self, name: str, category: str = "Other", tool_type: str | None = None) -> dict:
         resolved_tool_type = (
             tool_type
-            or ("analytics" if category == "Security Analytics" else "response" if category == "SOAR" else "control")
+            or (
+                "analytics"
+                if "Security Analytics" in category
+                else "response" if "SOAR" in category else "control"
+            )
         )
         response = self.client.post(
             "/tools",
@@ -1196,7 +1200,7 @@ class DefenseGraphConfidenceTests(unittest.TestCase):
                 ).fetchone()
 
             self.assertEqual(tool_row[0], "Legacy QRadar")
-            self.assertEqual(tool_row[1], "Security Analytics")
+            self.assertEqual(tool_row[1], "Security Analytics & Detection (SIEM / UEBA)")
             self.assertEqual(json.loads(tool_row[2]), ["analytics"])
             self.assertEqual(capability_row, ("detect", "full", "evidenced", "high"))
             self.assertEqual(evidence_row, ("Legacy export", "legacy.json"))

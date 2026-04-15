@@ -16,15 +16,69 @@ CoverageStatus = Literal["no_coverage", "detect_only", "partial", "low_confidenc
 
 # Active security control categories (prevention, detection, or response tools).
 # "BAS" is intentionally excluded from this list — BAS tools are cross-functional
-# assurance/validation tools, not active controls.
-ActiveControlCategory = Literal["EDR", "PAM", "DLP", "SASE", "DNS", "Email", "Identity", "Security Analytics", "SOAR", "Other"]
+# validated/validation tools, not active controls.
+ActiveControlCategory = Literal[
+    "Endpoint Security (EDR / XDR)",
+    "Identity & Access Security (IAM / Identity Protection)",
+    "Privileged Access Management (PAM)",
+    "Network Security (NGFW / IDS / IPS / NDR)",
+    "Application & API Security (WAF / WAAP)",
+    "SASE / SSE (SWG / ZTNA / CASB)",
+    "Email Security",
+    "Device & Network Access Control (NAC)",
+    "Security Analytics & Detection (SIEM / UEBA)",
+    "SOAR & Security Automation",
+    "Vulnerability & Exposure Management (Vuln Mgmt / ASM / EASM)",
+    "Cloud Workload Protection (CWPP / runtime)",
+    "OT / IoT Security",
+    "Deception Technologies",
+    "Data Loss Prevention (DLP / DSPM / Data Classification)",
+    "EDR",
+    "PAM",
+    "DLP",
+    "SASE",
+    "DNS",
+    "Email",
+    "Identity",
+    "Security Analytics",
+    "SOAR",
+    "Other",
+]
 
-# Full category set including BAS for tool registration.
-ToolCategory = Literal["EDR", "PAM", "DLP", "SASE", "DNS", "Email", "BAS", "Identity", "Security Analytics", "SOAR", "Other"]
+# Canonical tool categories plus legacy aliases accepted for compatibility.
+ToolCategory = Literal[
+    "Endpoint Security (EDR / XDR)",
+    "Identity & Access Security (IAM / Identity Protection)",
+    "Privileged Access Management (PAM)",
+    "Network Security (NGFW / IDS / IPS / NDR)",
+    "Application & API Security (WAF / WAAP)",
+    "SASE / SSE (SWG / ZTNA / CASB)",
+    "Email Security",
+    "Device & Network Access Control (NAC)",
+    "Security Analytics & Detection (SIEM / UEBA)",
+    "SOAR & Security Automation",
+    "Vulnerability & Exposure Management (Vuln Mgmt / ASM / EASM)",
+    "Cloud Workload Protection (CWPP / runtime)",
+    "OT / IoT Security",
+    "Deception Technologies",
+    "Data Loss Prevention (DLP / DSPM / Data Classification)",
+    "EDR",
+    "PAM",
+    "DLP",
+    "SASE",
+    "DNS",
+    "Email",
+    "BAS",
+    "Identity",
+    "Security Analytics",
+    "SOAR",
+    "Other",
+]
 
-# "assurance" captures BAS and similar validation tools that do NOT contribute
+# "validated" captures BAS and similar validation tools that do NOT contribute
 # to active coverage; they only validate whether existing controls hold.
-ToolType = Literal["control", "analytics", "response", "assurance"]
+# "assurance" remains accepted as a legacy alias for compatibility.
+ToolType = Literal["control", "analytics", "response", "validated", "assurance"]
 
 # Primary function label exposed in the control output
 ControlFunction = Literal["Prevent", "Detect", "Respond"]
@@ -524,8 +578,8 @@ class BASValidationUpdate(BaseModel):
 class ControlRead(BaseModel):
     """Structured view of a tool acting as an active security control.
 
-    Tools whose tool_types contains ONLY 'assurance' are excluded.
-    A tool with tool_types=['control','assurance'] IS included here because
+    Tools whose tool_types contains ONLY 'validated' are excluded.
+    A tool with tool_types=['control','validated'] IS included here because
     it also has an active control role.
     The primary_function is derived from the strongest control effect the
     tool applies across all its capabilities.
@@ -592,7 +646,7 @@ class TechniqueCoverageRead(BaseModel):
     contributing_tools: list[TechniqueCoverageContributionRead]
     relevant_scopes: list[TechniqueRelevantScopeRead]
     scope_summary: ScopeSummaryRead
-    # BAS (Breach and Attack Simulation) assurance fields.
+    # BAS (Breach and Attack Simulation) validated fields.
     # BAS is a cross-functional validation capability, not an active control.
     bas_validations: list[BASValidationRead]
     bas_validated: bool          # True when at least one non-"not_tested" result exists

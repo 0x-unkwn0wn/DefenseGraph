@@ -6,14 +6,26 @@ import { ToolsPage } from "./ToolsPage";
 
 vi.mock("../api", () => ({
   listTags: vi.fn().mockResolvedValue([
-    { name: "Active Directory", default_categories: ["Identity", "PAM"] },
-    { name: "Password Security", default_categories: ["Identity"] },
-    { name: "Authentication", default_categories: ["Identity", "SASE"] },
+    {
+      name: "Active Directory",
+      default_categories: [
+        "Identity & Access Security (IAM / Identity Protection)",
+        "Privileged Access Management (PAM)",
+      ],
+    },
+    { name: "Password Security", default_categories: ["Identity & Access Security (IAM / Identity Protection)"] },
+    {
+      name: "Authentication",
+      default_categories: [
+        "Identity & Access Security (IAM / Identity Protection)",
+        "SASE / SSE (SWG / ZTNA / CASB)",
+      ],
+    },
   ]),
   listToolTemplates: vi.fn().mockResolvedValue([
     {
       id: 1,
-      category: "EDR",
+      category: "Endpoint Security (EDR / XDR)",
       capability_id: 1,
       optional_tags: ["Endpoint Protection"],
       priority: "core",
@@ -33,7 +45,7 @@ vi.mock("../api", () => ({
     },
     {
       id: 2,
-      category: "EDR",
+      category: "Endpoint Security (EDR / XDR)",
       capability_id: 3,
       optional_tags: ["Monitoring"],
       priority: "secondary",
@@ -61,7 +73,7 @@ describe("ToolsPage", () => {
     render(<ToolsPage tools={[]} onCreateTool={vi.fn()} onDeleteTool={vi.fn()} />);
 
     await user.type(screen.getByPlaceholderText(/new tool/i), "Test EDR");
-    await user.selectOptions(screen.getByLabelText(/primary category/i), "EDR");
+    await user.selectOptions(screen.getByLabelText(/primary category/i), "Endpoint Security (EDR / XDR)");
     await user.click(screen.getByRole("button", { name: /continue/i }));
 
     await waitFor(() => {

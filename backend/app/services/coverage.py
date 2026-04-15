@@ -28,8 +28,10 @@ from app.schemas import (
     ScopeSummaryRead,
     TechniqueRelevantScopeRead,
 )
+from app.tool_categories import normalize_tool_category
 from app.services.configuration import calculate_configuration_status
 from app.services.confidence import CONFIDENCE_RANK, SOURCE_RANK, calculate_confidence
+from app.tool_types import normalize_tool_types
 
 
 COVERAGE_PRIORITY = {
@@ -129,7 +131,7 @@ def compute_coverage(db: Session) -> list[TechniqueCoverageRead]:
             .joinedload(Capability.tool_capabilities)
             .joinedload(ToolCapability.technique_overrides)
             .joinedload(ToolCapabilityTechniqueOverride.technique),
-            # BAS validations are assurance records, not active control contributions.
+            # BAS validations are validated records, not active control contributions.
             joinedload(Technique.bas_validations).joinedload(BASValidation.bas_tool),
         )
         .order_by(Technique.code)
@@ -344,8 +346,8 @@ def _collect_contributions_for_technique(
 
             # A tool contributes to active coverage only if it has "control"
             # or "analytics" among its types.  Tools that are purely
-            # "response" or "assurance" (BAS) are handled elsewhere.
-            tool_types = tool_capability.tool.tool_types
+            # "response" or "validated" (BAS) are handled elsewhere.
+            tool_types = normalize_tool_types(list(tool_capability.tool.tool_types))
             is_active = any(t in tool_types for t in ("control", "analytics"))
             if not is_active:
                 continue
@@ -417,8 +419,11 @@ def _collect_contributions_for_technique(
                 TechniqueContribution(
                     tool_id=tool_capability.tool_id,
                     tool_name=tool_capability.tool.name,
-                    tool_category=tool_capability.tool.category,
-                    tool_types=list(tool_capability.tool.tool_types),
+                    tool_category=normalize_tool_category(
+                        tool_capability.tool.category,
+                        list(tool_capability.tool.tool_type_labels),
+                    ),
+                    tool_types=tool_types,
                     capability_id=capability.id,
                     capability_code=capability.code,
                     capability_name=capability.name,

@@ -126,7 +126,7 @@ class Tool(Base):
     name: Mapped[str] = mapped_column(String(255), unique=True, nullable=False)
     vendor_id: Mapped[int | None] = mapped_column(ForeignKey("vendors.id"), nullable=True, index=True)
     category: Mapped[str] = mapped_column(String(50), nullable=False, default="Other")
-    # A tool can have multiple roles simultaneously (e.g. ["control", "assurance"]).
+    # A tool can have multiple roles simultaneously (e.g. ["control", "validated"]).
     tool_types: Mapped[list[str]] = mapped_column(JSON, nullable=False, default=lambda: ["control"])
     tool_type_labels: Mapped[list[str]] = mapped_column(JSON, nullable=False, default=list)
     tags: Mapped[list[str]] = mapped_column(JSON, nullable=False, default=list)
@@ -523,7 +523,7 @@ class ToolCapabilityConfigurationAnswer(Base):
 class BASValidation(Base):
     """Per-technique BAS (Breach and Attack Simulation) test result.
 
-    BAS is a cross-functional assurance capability, not an active security
+    BAS is a cross-functional validated capability, not an active security
     control.  These records track whether a specific TTP has been validated
     by a BAS tool and what the outcome was.
     """
@@ -532,7 +532,7 @@ class BASValidation(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
     technique_id: Mapped[int] = mapped_column(ForeignKey("techniques.id"), nullable=False, index=True)
-    # Optional reference to the BAS tool that ran the test (tool_type == "assurance")
+    # Optional reference to the BAS tool that ran the test (tool_type == "validated")
     bas_tool_id: Mapped[int | None] = mapped_column(ForeignKey("tools.id"), nullable=True, index=True)
     # "blocked" | "detected" | "not_detected" | "not_tested"
     bas_result: Mapped[str] = mapped_column(String(20), nullable=False, default="not_tested")

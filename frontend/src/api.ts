@@ -290,7 +290,7 @@ export function listCoverage() {
 }
 
 // ---------------------------------------------------------------------------
-// Controls — active security controls (excludes BAS / assurance tools)
+// Controls — active security controls (excludes BAS / validated tools)
 // ---------------------------------------------------------------------------
 
 export function listControls() {
@@ -299,7 +299,7 @@ export function listControls() {
 
 // ---------------------------------------------------------------------------
 // BAS Validations
-// BAS is a cross-functional assurance/validation capability.  These calls
+// BAS is a cross-functional validated/validation capability. These calls
 // record and retrieve BAS test outcomes per technique (TTP).  BAS results
 // do NOT affect the active coverage computation — they only reflect whether
 // adversary simulation confirmed or bypassed the existing controls.

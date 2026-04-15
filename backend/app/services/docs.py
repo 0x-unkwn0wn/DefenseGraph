@@ -15,6 +15,7 @@ from app.schemas import (
     DocsToolTypeRead,
 )
 from app.services.mappings import get_structural_technique_maps
+from app.tool_types import normalize_tool_types
 
 
 def _serialize_capability(capability: Capability) -> CapabilityRead:
@@ -80,7 +81,7 @@ def get_tool_type_docs(db: Session) -> list[DocsToolTypeRead]:
         )
         capability_inputs = sorted({assignment.capability.name for assignment in active_assignments})
 
-        for tool_type in tool.tool_types:
+        for tool_type in normalize_tool_types(list(tool.tool_types)):
             bucket = grouped.setdefault(
                 tool_type,
                 {
@@ -138,7 +139,7 @@ def get_capability_docs(db: Session) -> list[DocsCapabilityRead]:
             {
                 tool_type
                 for assignment in capability.tool_capabilities
-                for tool_type in assignment.tool.tool_types
+                for tool_type in normalize_tool_types(list(assignment.tool.tool_types))
             }
         )
         purpose = (
@@ -174,7 +175,7 @@ def get_mapping_docs(db: Session) -> DocsMappingRead:
 
     for capability in capabilities:
         for assignment in capability.tool_capabilities:
-            for tool_type in assignment.tool.tool_types:
+            for tool_type in normalize_tool_types(list(assignment.tool.tool_types)):
                 capability_to_tool_types[capability.id].add(tool_type)
                 tool_type_to_capabilities[tool_type].add(capability.id)
 

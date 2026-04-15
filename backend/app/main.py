@@ -97,6 +97,8 @@ from app.services.confidence import calculate_confidence
 from app.services.coverage import compute_coverage
 from app.services.docs import get_capability_docs, get_mapping_docs, get_tool_type_docs
 from app.services.mappings import get_structural_technique_maps
+from app.tool_categories import normalize_tool_category
+from app.tool_types import is_validated_tool, normalize_tool_types
 from app.services.tool_templates import (
     apply_templates_to_tool,
     get_ranked_templates,
@@ -244,8 +246,8 @@ def serialize_tool(tool: Tool) -> ToolRead:
         id=tool.id,
         name=tool.name,
         vendor=VendorRead.model_validate(tool.vendor) if tool.vendor else None,
-        category=tool.category,
-        tool_types=list(tool.tool_types),
+        category=normalize_tool_category(tool.category, list(tool.tool_type_labels)),
+        tool_types=normalize_tool_types(list(tool.tool_types)),
         tool_type_labels=list(tool.tool_type_labels),
         tags=tool.tags,
         capabilities=[
@@ -358,7 +360,7 @@ def serialize_ranked_tool_template(
 ) -> ToolCapabilityTemplateRead:
     return ToolCapabilityTemplateRead(
         id=template.id,
-        category=template.category,
+        category=normalize_tool_category(template.category),
         capability_id=template.capability_id,
         optional_tags=template.optional_tags,
         priority=template.priority,
@@ -528,6 +530,7 @@ def serialize_assignment_detail(tool_capability: ToolCapability) -> ToolCapabili
 
 
 def serialize_capability_detail(capability: Capability) -> CapabilityDetailRead:
+    structural_maps = get_structural_technique_maps(capability)
     return CapabilityDetailRead(
         capability=serialize_capability_read(capability),
         assessment_template=serialize_assessment_template(capability.assessment_template),
@@ -537,13 +540,9 @@ def serialize_capability_detail(capability: Capability) -> CapabilityDetailRead:
                 technique_code=entry.technique.code,
                 technique_name=entry.technique.name,
                 attack_url=f"https://attack.mitre.org/techniques/{entry.technique.code.replace('.', '/')}/",
-                control_effect=entry.control_effect,
                 coverage=entry.coverage,
             )
-            for entry in sorted(
-                capability.technique_maps,
-                key=lambda item: (item.technique.code, item.control_effect),
-            )
+            for entry in structural_maps
         ],
         implementing_tools=[
             _serialize_capability_implementing_tool(assignment)
@@ -597,8 +596,8 @@ def _serialize_capability_implementing_tool(assignment: ToolCapability) -> Capab
         tool_id=assignment.tool_id,
         tool_name=assignment.tool.name,
         vendor=VendorRead.model_validate(assignment.tool.vendor) if assignment.tool.vendor else None,
-        tool_category=assignment.tool.category,
-        tool_types=list(assignment.tool.tool_types),
+        tool_category=normalize_tool_category(assignment.tool.category, list(assignment.tool.tool_type_labels)),
+        tool_types=normalize_tool_types(list(assignment.tool.tool_types)),
         tool_type_labels=list(assignment.tool.tool_type_labels),
         control_effect_default=assignment.control_effect_default,
         implementation_level=assignment.implementation_level,
@@ -646,8 +645,8 @@ def create_tool(payload: ToolCreate, db: Session = Depends(get_db)):
     tool = Tool(
         name=payload.name.strip(),
         vendor_id=vendor.id if vendor else None,
-        category=payload.category,
-        tool_types=list(dict.fromkeys(payload.tool_types)),  # deduplicate, preserve order
+        category=normalize_tool_category(payload.category, payload.tool_type_labels),
+        tool_types=normalize_tool_types(list(dict.fromkeys(payload.tool_types))),
         tool_type_labels=list(dict.fromkeys(item.strip() for item in payload.tool_type_labels if item.strip())),
         tags=normalize_tags(payload.tags),
     )
@@ -699,7 +698,7 @@ def update_tool_types(tool_id: int, payload: ToolTypesUpdate, db: Session = Depe
     tool = get_tool_or_404(db, tool_id)
     if not payload.tool_types:
         raise HTTPException(status_code=422, detail="At least one tool type is required.")
-    tool.tool_types = list(dict.fromkeys(payload.tool_types))  # deduplicate, preserve order
+    tool.tool_types = normalize_tool_types(list(dict.fromkeys(payload.tool_types)))
     db.commit()
     return serialize_tool(get_tool_or_404(db, tool_id))
 
@@ -1169,7 +1168,7 @@ def get_coverage(db: Session = Depends(get_db)):
 
 # ---------------------------------------------------------------------------
 # Controls endpoint
-# Returns only active security control tools (tool_type != "assurance").
+# Returns only active security control tools (tool_type != "validated").
 # BAS tools are excluded by design — they are cross-functional validation
 # tools, not active controls.
 # ---------------------------------------------------------------------------
@@ -1205,7 +1204,7 @@ def _derive_primary_function(tool: Tool) -> str:
 
 
 def _is_active_control(tool: Tool) -> bool:
-    """True when the tool has at least one active role (not purely assurance)."""
+    """True when the tool has at least one active role (not purely validated)."""
     return any(t in tool.tool_types for t in ("control", "analytics", "response"))
 
 
@@ -1213,9 +1212,9 @@ def _is_active_control(tool: Tool) -> bool:
 def list_controls(db: Session = Depends(get_db)):
     """List all active security controls with their primary function and covered TTPs.
 
-    Tools that are ONLY 'assurance' are excluded.  A tool with
-    tool_types=['control','assurance'] IS included because it has an active
-    control role in addition to its BAS/assurance capability.
+    Tools that are ONLY 'validated' are excluded.  A tool with
+    tool_types=['control','validated'] IS included because it has an active
+    control role in addition to its BAS/validated capability.
     """
     statement = (
         select(Tool)
@@ -1244,8 +1243,8 @@ def list_controls(db: Session = Depends(get_db)):
             ControlRead(
                 tool_id=tool.id,
                 tool_name=tool.name,
-                primary_category=tool.category,
-                tool_types=list(tool.tool_types),
+                primary_category=normalize_tool_category(tool.category, list(tool.tool_type_labels)),
+                tool_types=normalize_tool_types(list(tool.tool_types)),
                 primary_function=_derive_primary_function(tool),
                 covered_ttp_ids=ttp_ids,
             )
@@ -1255,7 +1254,7 @@ def list_controls(db: Session = Depends(get_db)):
 
 # ---------------------------------------------------------------------------
 # BAS Validation endpoints
-# BAS is a cross-functional assurance/validation capability — not an active
+# BAS is a cross-functional validated/validation capability — not an active
 # control.  These endpoints record BAS test outcomes per technique (TTP).
 # ---------------------------------------------------------------------------
 
@@ -1283,7 +1282,7 @@ def _serialize_bas_validation(v: BASValidation) -> BASValidationRead:
 def list_bas_validations(technique_id: int, db: Session = Depends(get_db)):
     """List all BAS validation records for a technique (TTP).
 
-    Returns assurance/validation results from BAS tools.  These records do
+    Returns validated/validation results from BAS tools.  These records do
     NOT affect active coverage — they only reflect whether an adversary
     simulation confirmed or bypassed the existing controls.
     """
@@ -1305,22 +1304,22 @@ def create_bas_validation(
 ):
     """Record a BAS test result for a specific technique (TTP).
 
-    The bas_tool_id must reference a tool with tool_type == 'assurance'.
+    The bas_tool_id must reference a tool with tool_type == 'validated'.
     Providing a control-type tool ID is rejected to enforce the separation
-    between active controls and assurance tooling.
+    between active controls and validated tooling.
     """
     _get_technique_or_404(db, technique_id)
     if payload.bas_tool_id is not None:
         bas_tool = db.get(Tool, payload.bas_tool_id)
         if bas_tool is None:
             raise HTTPException(status_code=404, detail="BAS tool not found")
-        if "assurance" not in bas_tool.tool_types:
+        if not is_validated_tool(list(bas_tool.tool_types)):
             raise HTTPException(
                 status_code=400,
                 detail=(
-                    f"Tool '{bas_tool.name}' does not have 'assurance' in its tool_types "
-                    f"(current: {bas_tool.tool_types}). "
-                    "Only tools with 'assurance' among their types may be used as BAS tools."
+                    f"Tool '{bas_tool.name}' does not have 'validated' in its tool_types "
+                    f"(current: {normalize_tool_types(list(bas_tool.tool_types))}). "
+                    "Only tools with 'validated' among their types may be used as BAS tools."
                 ),
             )
 
@@ -1358,13 +1357,13 @@ def update_bas_validation(
         bas_tool = db.get(Tool, payload.bas_tool_id)
         if bas_tool is None:
             raise HTTPException(status_code=404, detail="BAS tool not found")
-        if "assurance" not in bas_tool.tool_types:
+        if not is_validated_tool(list(bas_tool.tool_types)):
             raise HTTPException(
                 status_code=400,
                 detail=(
-                    f"Tool '{bas_tool.name}' does not have 'assurance' in its tool_types "
-                    f"(current: {bas_tool.tool_types}). "
-                    "Only tools with 'assurance' among their types may be used as BAS tools."
+                    f"Tool '{bas_tool.name}' does not have 'validated' in its tool_types "
+                    f"(current: {normalize_tool_types(list(bas_tool.tool_types))}). "
+                    "Only tools with 'validated' among their types may be used as BAS tools."
                 ),
             )
         validation.bas_tool_id = payload.bas_tool_id

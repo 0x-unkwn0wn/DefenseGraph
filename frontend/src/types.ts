@@ -9,6 +9,21 @@ export type ConfigurationAnswerValue = "yes" | "no" | "partial" | "unknown";
 export type CoverageStatus = "no_coverage" | "detect_only" | "partial" | "low_confidence" | "covered";
 export type EffectiveOutcome = "none" | "detect" | "detect_with_response" | "block" | "prevent";
 export type ToolCategory =
+  | "Endpoint Security (EDR / XDR)"
+  | "Identity & Access Security (IAM / Identity Protection)"
+  | "Privileged Access Management (PAM)"
+  | "Network Security (NGFW / IDS / IPS / NDR)"
+  | "Application & API Security (WAF / WAAP)"
+  | "SASE / SSE (SWG / ZTNA / CASB)"
+  | "Email Security"
+  | "Device & Network Access Control (NAC)"
+  | "Security Analytics & Detection (SIEM / UEBA)"
+  | "SOAR & Security Automation"
+  | "Vulnerability & Exposure Management (Vuln Mgmt / ASM / EASM)"
+  | "Cloud Workload Protection (CWPP / runtime)"
+  | "OT / IoT Security"
+  | "Deception Technologies"
+  | "Data Loss Prevention (DLP / DSPM / Data Classification)"
   | "EDR"
   | "PAM"
   | "DLP"
@@ -20,9 +35,10 @@ export type ToolCategory =
   | "Security Analytics"
   | "SOAR"
   | "Other";
-// "assurance" captures BAS and other validation tools.  These do NOT
+// "validated" captures BAS and other validation tools. These do NOT
 // contribute to active coverage — they only validate existing controls.
-export type ToolType = "control" | "analytics" | "response" | "assurance";
+// "assurance" remains accepted as a legacy alias for compatibility.
+export type ToolType = "control" | "analytics" | "response" | "validated" | "assurance";
 
 // Primary function label for active control tools.
 export type ControlFunction = "Prevent" | "Detect" | "Respond";
@@ -357,7 +373,7 @@ export interface ToolCapabilityTemplate {
 
 /** BAS validation record for a single TTP.
  *
- * BAS is a cross-functional assurance capability — NOT an active control.
+ * BAS is a cross-functional validated capability — NOT an active control.
  * These records capture whether an adversary simulation confirmed or
  * bypassed existing controls for a given technique.
  */
@@ -371,7 +387,7 @@ export interface BASValidation {
   notes: string;
 }
 
-/** Active security control tool (tool_type != 'assurance').
+/** Active security control tool (tool_type != 'validated').
  *
  * BAS tools are intentionally excluded — they are validation tools, not
  * active controls classified under Prevent / Detect / Respond.
@@ -408,7 +424,7 @@ export interface TechniqueCoverage {
   contributing_tools: TechniqueCoverageContribution[];
   relevant_scopes: TechniqueRelevantScope[];
   scope_summary: ScopeSummary;
-  /** BAS assurance fields — separate from active coverage. */
+  /** BAS validated fields — separate from active coverage. */
   bas_validations: BASValidation[];
   bas_validated: boolean;
   bas_result: BASResult | null;

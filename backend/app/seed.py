@@ -23,6 +23,7 @@ from app.models import (
     ToolCapabilityTemplate,
     Vendor,
 )
+from app.tool_categories import normalize_tool_category
 
 
 CAPABILITIES = [
@@ -436,7 +437,7 @@ CAPABILITIES = [
         "code": "CAP-127",
         "name": "Strong Authentication",
         "domain": "identity",
-        "description": "Raises assurance of authentication flows through stronger verification controls.",
+        "description": "Raises confidence in authentication flows through stronger verification controls.",
     },
     {
         "code": "CAP-128",
@@ -2284,6 +2285,11 @@ def _normalize_known_tools(db: Session) -> None:
     vendors_by_name = {vendor.name: vendor for vendor in db.scalars(select(Vendor)).all()}
     capabilities_by_name = {capability.name: capability for capability in db.scalars(select(Capability)).all()}
 
+    for tool in tools_by_name.values():
+        normalized_category = normalize_tool_category(tool.category, list(tool.tool_type_labels))
+        if normalized_category != tool.category:
+            tool.category = normalized_category
+
     for rule in TOOL_CAPABILITY_NORMALIZATION_RULES:
         tool = tools_by_name.get(rule["tool_name"])
         if tool is None:
@@ -2293,11 +2299,13 @@ def _normalize_known_tools(db: Session) -> None:
         if vendor is not None and tool.vendor_id != vendor.id:
             tool.vendor_id = vendor.id
 
-        if tool.category == "Other" and rule["category"] != "Other":
-            tool.category = rule["category"]
+        rule_category = normalize_tool_category(rule["category"], rule["tool_type_labels"])
+        if tool.category == "Other" and rule_category != "Other":
+            tool.category = rule_category
 
         tool.tool_types = list(dict.fromkeys([*tool.tool_types, *rule["tool_types"]]))
         tool.tool_type_labels = list(dict.fromkeys([*tool.tool_type_labels, *rule["tool_type_labels"]]))
+        tool.category = normalize_tool_category(tool.category, list(tool.tool_type_labels))
 
         assignments_by_capability_id = {
             assignment.capability_id: assignment
@@ -2340,6 +2348,15 @@ def _normalize_known_tools(db: Session) -> None:
 def _seed_tool_capability_templates(db: Session) -> None:
     existing_template_count = db.query(ToolCapabilityTemplate).count()
     if existing_template_count == len(TOOL_CAPABILITY_TEMPLATES):
+        templates = db.scalars(select(ToolCapabilityTemplate)).all()
+        updated = False
+        for template in templates:
+            normalized_category = normalize_tool_category(template.category)
+            if normalized_category != template.category:
+                template.category = normalized_category
+                updated = True
+        if updated:
+            db.commit()
         return
 
     if existing_template_count:
@@ -2353,7 +2370,7 @@ def _seed_tool_capability_templates(db: Session) -> None:
 
     db.add_all(
         ToolCapabilityTemplate(
-            category=template["category"],
+            category=normalize_tool_category(template["category"]),
             capability_id=capabilities[template["capability_code"]].id,
             optional_tags=template["optional_tags"],
             priority=template["priority"],

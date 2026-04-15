@@ -241,11 +241,12 @@ export function ToolDetailPage({
     await onUpdateTags(activeTool.id, tagDraft);
   }
 
-  const ALL_TOOL_TYPES: ToolType[] = ["control", "analytics", "response", "assurance"];
+  const ALL_TOOL_TYPES: ToolType[] = ["control", "analytics", "response", "validated"];
   const TOOL_TYPE_LABEL: Record<ToolType, string> = {
     control: "control",
     analytics: "analytics",
     response: "response",
+    validated: "Validated",
     assurance: "Validated",
   };
 

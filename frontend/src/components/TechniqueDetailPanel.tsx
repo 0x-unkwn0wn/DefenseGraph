@@ -4,6 +4,7 @@ const TOOL_TYPE_LABEL: Record<ToolType, string> = {
   control: "control",
   analytics: "analytics",
   response: "response",
+  validated: "Validated",
   assurance: "Validated",
 };
 

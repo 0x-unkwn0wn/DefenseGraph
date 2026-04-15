@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session, joinedload
 from app.models import Tool, ToolCapability, ToolCapabilityTemplate
 from app.schemas import ToolCapabilityTemplateApplyItem
 from app.seed import CATEGORY_DEFAULT_TAGS, TOOL_TAGS
+from app.tool_categories import get_category_lookup_values, normalize_tool_category
 
 
 TEMPLATE_PRIORITY_RANK = {"core": 2, "secondary": 1, "niche": 0}
@@ -20,18 +21,31 @@ class RankedTemplate:
 
 
 def list_available_tags() -> list[dict[str, object]]:
-    return TOOL_TAGS
+    return [
+        {
+            **tag,
+            "default_categories": [
+                normalize_tool_category(category)
+                for category in tag["default_categories"]
+            ],
+        }
+        for tag in TOOL_TAGS
+    ]
 
 
 def get_default_tags_for_category(category: str) -> list[str]:
-    return CATEGORY_DEFAULT_TAGS.get(category, [])
+    for lookup_value in get_category_lookup_values(category):
+        if lookup_value in CATEGORY_DEFAULT_TAGS:
+            return CATEGORY_DEFAULT_TAGS[lookup_value]
+    return []
 
 
 def get_ranked_templates(db: Session, category: str, tags: list[str]) -> list[RankedTemplate]:
+    category_values = get_category_lookup_values(category)
     statement = (
         select(ToolCapabilityTemplate)
         .options(joinedload(ToolCapabilityTemplate.capability))
-        .where(ToolCapabilityTemplate.category == category)
+        .where(ToolCapabilityTemplate.category.in_(category_values))
         .order_by(ToolCapabilityTemplate.id)
     )
     templates = db.execute(statement).unique().scalars().all()
@@ -82,7 +96,7 @@ def apply_templates_to_tool(
 
     for item in selected_templates:
         template = templates.get(item.template_id)
-        if template is None or template.category != tool.category:
+        if template is None or normalize_tool_category(template.category) != normalize_tool_category(tool.category, list(tool.tool_type_labels)):
             continue
 
         assignment = db.scalar(

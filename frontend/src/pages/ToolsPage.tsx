@@ -30,20 +30,24 @@ interface ToolsPageProps {
 }
 
 const toolCategories: ToolCategory[] = [
-  "EDR",
-  "PAM",
-  "DLP",
-  "SASE",
-  "DNS",
-  "Email",
-  "BAS",
-  "Identity",
-  "Security Analytics",
-  "SOAR",
-  "Other",
+  "Endpoint Security (EDR / XDR)",
+  "Identity & Access Security (IAM / Identity Protection)",
+  "Privileged Access Management (PAM)",
+  "Network Security (NGFW / IDS / IPS / NDR)",
+  "Application & API Security (WAF / WAAP)",
+  "SASE / SSE (SWG / ZTNA / CASB)",
+  "Email Security",
+  "Device & Network Access Control (NAC)",
+  "Security Analytics & Detection (SIEM / UEBA)",
+  "SOAR & Security Automation",
+  "Vulnerability & Exposure Management (Vuln Mgmt / ASM / EASM)",
+  "Cloud Workload Protection (CWPP / runtime)",
+  "OT / IoT Security",
+  "Deception Technologies",
+  "Data Loss Prevention (DLP / DSPM / Data Classification)",
 ];
 
-const ALL_TOOL_TYPES: ToolType[] = ["control", "analytics", "response", "assurance"];
+const ALL_TOOL_TYPES: ToolType[] = ["control", "analytics", "response", "validated"];
 const PRODUCT_TYPE_OPTIONS = [
   "DLP",
   "Encryption",
@@ -69,17 +73,33 @@ const TOOL_TYPE_LABEL: Record<ToolType, string> = {
   control: "control",
   analytics: "analytics",
   response: "response",
+  validated: "Validated",
   assurance: "Validated",
 };
 
 const defaultToolTypesByCategory: Record<ToolCategory, ToolType[]> = {
+  "Endpoint Security (EDR / XDR)": ["control"],
+  "Identity & Access Security (IAM / Identity Protection)": ["control"],
+  "Privileged Access Management (PAM)": ["control"],
+  "Network Security (NGFW / IDS / IPS / NDR)": ["control"],
+  "Application & API Security (WAF / WAAP)": ["control"],
+  "SASE / SSE (SWG / ZTNA / CASB)": ["control"],
+  "Email Security": ["control"],
+  "Device & Network Access Control (NAC)": ["control"],
+  "Security Analytics & Detection (SIEM / UEBA)": ["analytics"],
+  "SOAR & Security Automation": ["response"],
+  "Vulnerability & Exposure Management (Vuln Mgmt / ASM / EASM)": ["control"],
+  "Cloud Workload Protection (CWPP / runtime)": ["control"],
+  "OT / IoT Security": ["control"],
+  "Deception Technologies": ["control"],
+  "Data Loss Prevention (DLP / DSPM / Data Classification)": ["control"],
   EDR: ["control"],
   PAM: ["control"],
   DLP: ["control"],
   SASE: ["control"],
   DNS: ["control"],
   Email: ["control"],
-  BAS: ["assurance"],
+  BAS: ["validated"],
   Identity: ["control"],
   "Security Analytics": ["analytics"],
   SOAR: ["response"],
@@ -89,7 +109,7 @@ const defaultToolTypesByCategory: Record<ToolCategory, ToolType[]> = {
 export function ToolsPage({ tools, onCreateTool, onDeleteTool }: ToolsPageProps) {
   const [name, setName] = useState("");
   const [vendorName, setVendorName] = useState("");
-  const [category, setCategory] = useState<ToolCategory>("Other");
+  const [category, setCategory] = useState<ToolCategory>("Endpoint Security (EDR / XDR)");
   const [toolTypes, setToolTypes] = useState<ToolType[]>(["control"]);
   const [toolTypeLabels, setToolTypeLabels] = useState<string[]>([]);
   const [tagCatalog, setTagCatalog] = useState<ToolTagDefinition[]>([]);
@@ -127,7 +147,7 @@ export function ToolsPage({ tools, onCreateTool, onDeleteTool }: ToolsPageProps)
   function resetWizard() {
     setName("");
     setVendorName("");
-    setCategory("Other");
+    setCategory("Endpoint Security (EDR / XDR)");
     setToolTypes(["control"]);
     setToolTypeLabels([]);
     setSelectedTags([]);

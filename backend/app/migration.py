@@ -30,6 +30,8 @@ from app.models import (
     Vendor,
 )
 from app.seed import seed_reference_data, LEGACY_CAPABILITY_MAP
+from app.tool_categories import normalize_tool_category
+from app.tool_types import normalize_tool_types
 
 
 CONTROL_EFFECT_PRIORITY = {"none": 0, "detect": 1, "block": 2, "prevent": 3}
@@ -337,7 +339,7 @@ def _extract_legacy_payload(connection: sqlite3.Connection) -> dict[str, list[di
                 "id": int(tool_id),
                 "name": str(name),
                 "vendor_name": _extract_vendor_name(connection, tool_columns, int(tool_id)),
-                "category": str(category or "Other"),
+                "category": normalize_tool_category(str(category or "Other")),
                 "tool_types": tool_types or ["control"],
                 "tool_type_labels": _deserialize_json_list(
                     _fetch_optional_value(connection, "tools", "tool_type_labels", int(tool_id), [])
@@ -632,11 +634,11 @@ def _resolve_capability_code_and_effect(
 def _extract_tool_types(connection: sqlite3.Connection, tool_columns: set[str], tool_id: int) -> list[str]:
     if "tool_types" in tool_columns:
         raw_value = _fetch_optional_value(connection, "tools", "tool_types", tool_id, ["control"])
-        return _deserialize_json_list(raw_value) or ["control"]
+        return normalize_tool_types(_deserialize_json_list(raw_value) or ["control"])
     if "tool_type" in tool_columns:
         raw_value = _fetch_optional_value(connection, "tools", "tool_type", tool_id, "control")
-        return [str(raw_value or "control")]
-    return ["control"]
+        return normalize_tool_types([str(raw_value or "control")])
+    return normalize_tool_types(["control"])
 
 
 def _extract_vendor_name(connection: sqlite3.Connection, tool_columns: set[str], tool_id: int) -> str | None:
