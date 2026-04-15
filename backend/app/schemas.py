@@ -126,7 +126,6 @@ class CapabilityTechniqueMapRead(BaseModel):
     technique_code: str
     technique_name: str
     attack_url: str
-    control_effect: MappedControlEffect
     coverage: MappingCoverage
 
 

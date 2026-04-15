@@ -22,7 +22,6 @@ vi.mock("../api", () => ({
           technique_code: "T1078",
           technique_name: "Valid Accounts",
           attack_url: "https://attack.mitre.org/techniques/T1078/",
-          control_effect: "detect",
           coverage: "full",
         },
         {
@@ -30,7 +29,6 @@ vi.mock("../api", () => ({
           technique_code: "T1021",
           technique_name: "Remote Services",
           attack_url: "https://attack.mitre.org/techniques/T1021/",
-          control_effect: "detect",
           coverage: "full",
         },
       ],
@@ -42,7 +40,6 @@ vi.mock("../api", () => ({
         technique_code: "T1078",
         technique_name: "Valid Accounts",
         attack_url: "https://attack.mitre.org/techniques/T1078/",
-        control_effect: "detect",
         coverage: "full",
       },
       {
@@ -50,7 +47,6 @@ vi.mock("../api", () => ({
         technique_code: "T1021",
         technique_name: "Remote Services",
         attack_url: "https://attack.mitre.org/techniques/T1021/",
-        control_effect: "detect",
         coverage: "full",
       },
     ],
@@ -77,5 +73,8 @@ describe("CapabilityDetailPage", () => {
       "href",
       "https://attack.mitre.org/techniques/T1021/",
     );
+    expect(
+      screen.getByText(/These mappings are structural only\. Actual detect, block, and prevent behavior comes from implementing tools/i),
+    ).toBeInTheDocument();
   });
 });

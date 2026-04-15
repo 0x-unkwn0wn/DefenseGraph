@@ -195,6 +195,22 @@ class DefenseGraphConfidenceTests(unittest.TestCase):
         self.assertEqual(answer_response.status_code, 200)
         return answer_response.json()
 
+    def _coverage_row(self, technique_code: str) -> dict:
+        return next(item for item in self.client.get("/coverage").json() if item["technique_code"] == technique_code)
+
+    def _mapping_effects_for(self, capability_id: int, technique_code: str) -> list[str]:
+        with self.session_local() as db:
+            rows = db.execute(
+                select(CapabilityTechniqueMap.control_effect)
+                .join(Technique, Technique.id == CapabilityTechniqueMap.technique_id)
+                .where(
+                    CapabilityTechniqueMap.capability_id == capability_id,
+                    Technique.code == technique_code,
+                )
+            ).scalars().all()
+
+        return sorted(set(rows))
+
     def test_tool_capability_defaults_to_declared_low_confidence(self):
         tool = self._create_tool("Email Security", "Email")
         capability = self._find_capability("CAP-004")
@@ -706,6 +722,131 @@ class DefenseGraphConfidenceTests(unittest.TestCase):
         row = next(item for item in self.client.get("/coverage").json() if item["technique_code"] == "T1567")
         self.assertEqual(row["available_effects"], ["prevent", "detect"])
         self.assertEqual(row["best_effect"], "prevent")
+        self.assertEqual(row["prevention_count"], 1)
+
+    def test_structural_mapping_allows_default_block_without_clipping(self):
+        tool = self._create_tool("Structural Block Control", "Identity")
+        capability = self._find_capability("CAP-028")
+
+        self._assign_capability(tool["id"], capability["id"], "block", "full")
+        self._set_scopes(
+            tool["id"],
+            capability["id"],
+            [
+                ("endpoint_user_device", "full", "Endpoints"),
+                ("server", "full", "Servers"),
+                ("cloud_workload", "full", "Cloud"),
+            ],
+        )
+
+        row = self._coverage_row("T1041")
+        self.assertEqual(row["best_effect"], "block")
+        self.assertEqual(row["available_effects"], ["block"])
+
+    def test_structural_mapping_uses_override_detect_without_clipping(self):
+        tool = self._create_tool("Structural Override Control", "Identity")
+        capability = self._find_capability("CAP-028")
+
+        self._assign_capability(tool["id"], capability["id"], "block", "full")
+        self._set_scopes(
+            tool["id"],
+            capability["id"],
+            [
+                ("endpoint_user_device", "full", "Endpoints"),
+                ("server", "full", "Servers"),
+                ("cloud_workload", "full", "Cloud"),
+            ],
+        )
+        self._set_technique_overrides(
+            tool["id"],
+            capability["id"],
+            [("T1041", "detect", None, "This technique is alert-only")],
+        )
+
+        row = self._coverage_row("T1041")
+        self.assertEqual(row["best_effect"], "detect")
+        self.assertEqual(row["available_effects"], ["detect"])
+
+    def test_detect_only_historical_mapping_does_not_clip_prevent_override(self):
+        tool = self._create_tool("Authoritative Override Control", "Identity")
+        capability = self._find_capability("CAP-030")
+
+        self.assertEqual(self._mapping_effects_for(capability["id"], "T1133"), ["detect"])
+
+        self._assign_capability(tool["id"], capability["id"], "block", "full")
+        self._set_scopes(
+            tool["id"],
+            capability["id"],
+            [
+                ("identity", "full", "Identity coverage"),
+                ("public_facing_app", "full", "External access points"),
+            ],
+        )
+        self._set_technique_overrides(
+            tool["id"],
+            capability["id"],
+            [("T1133", "prevent", None, "This deployment actively prevents remote access abuse")],
+        )
+
+        row = self._coverage_row("T1133")
+        self.assertEqual(row["best_effect"], "prevent")
+        self.assertEqual(row["available_effects"], ["prevent"])
+        self.assertEqual(row["prevention_count"], 1)
+
+    def test_prevent_only_historical_mapping_does_not_null_detect_override(self):
+        tool = self._create_tool("Prevent Legacy Mapping Control", "Identity")
+        capability = self._find_capability("CAP-024")
+
+        self.assertEqual(self._mapping_effects_for(capability["id"], "T1110"), ["prevent"])
+
+        self._assign_capability(tool["id"], capability["id"], "prevent", "full")
+        self._set_scopes(tool["id"], capability["id"], [("identity", "full", "Identity systems")])
+        self._set_technique_overrides(
+            tool["id"],
+            capability["id"],
+            [("T1110", "detect", None, "This deployment only alerts on password attacks")],
+        )
+
+        row = self._coverage_row("T1110")
+        self.assertEqual(row["best_effect"], "detect")
+        self.assertEqual(row["available_effects"], ["detect"])
+        self.assertEqual(row["detection_count"], 1)
+
+    def test_tool_does_not_contribute_without_structural_mapping(self):
+        tool = self._create_tool("Unmapped Capability Control", "Identity")
+        capability = self._find_capability("CAP-009")
+
+        self._assign_capability(tool["id"], capability["id"], "prevent", "full")
+        self._set_scopes(tool["id"], capability["id"], [("identity", "full", "Identity systems")])
+
+        row = self._coverage_row("T1190")
+        self.assertEqual(row["best_effect"], "none")
+        self.assertEqual(row["available_effects"], [])
+        self.assertEqual(row["tool_count"], 0)
+
+    def test_multiple_tools_aggregate_resolved_effects_without_mapping_caps(self):
+        detect_tool = self._create_tool("Detect Identity Control", "Identity")
+        block_tool = self._create_tool("Block Identity Control", "Identity")
+        prevent_tool = self._create_tool("Prevent Identity Control", "Identity")
+
+        detect_capability = self._find_capability("CAP-030")
+        block_capability = self._find_capability("CAP-027")
+        prevent_capability = self._find_capability("CAP-024")
+
+        self._assign_capability(detect_tool["id"], detect_capability["id"], "detect", "full")
+        self._set_scopes(detect_tool["id"], detect_capability["id"], [("identity", "full", "Identity systems")])
+
+        self._assign_capability(block_tool["id"], block_capability["id"], "block", "full")
+        self._set_scopes(block_tool["id"], block_capability["id"], [("identity", "full", "Identity systems")])
+
+        self._assign_capability(prevent_tool["id"], prevent_capability["id"], "prevent", "full")
+        self._set_scopes(prevent_tool["id"], prevent_capability["id"], [("identity", "full", "Identity systems")])
+
+        row = self._coverage_row("T1110")
+        self.assertEqual(row["available_effects"], ["prevent", "block", "detect"])
+        self.assertEqual(row["best_effect"], "prevent")
+        self.assertEqual(row["detection_count"], 1)
+        self.assertEqual(row["blocking_count"], 1)
         self.assertEqual(row["prevention_count"], 1)
 
     def test_scope_endpoint_only_marks_multi_scope_technique_as_partial(self):

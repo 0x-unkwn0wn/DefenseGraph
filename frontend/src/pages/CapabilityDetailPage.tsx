@@ -166,15 +166,18 @@ export function CapabilityDetailPage({ capabilityId }: CapabilityDetailPageProps
       </Card>
 
       <Card title="Related ATT&CK techniques" subtitle="Mappings">
+        <p className="muted">
+          These mappings are structural only. Actual detect, block, and prevent behavior comes from implementing tools
+          and any per-technique overrides.
+        </p>
         <div className="detail-list">
           {detail.related_techniques.map((technique) => (
-            <div key={`${technique.technique_code}-${technique.control_effect}`} className="detail-item">
+            <div key={technique.technique_id} className="detail-item">
               <div className="detail-row">
                 <a href={technique.attack_url} target="_blank" rel="noreferrer" className="capability-link">
                   {technique.technique_code} - {technique.technique_name}
                 </a>
                 <div className="workspace-badges">
-                  <span className={`coverage-pill ${technique.control_effect}`}>{technique.control_effect}</span>
                   <span className="count-chip">{technique.coverage}</span>
                 </div>
               </div>

@@ -23,7 +23,6 @@ vi.mock("../api", () => ({
           technique_code: "T1204",
           technique_name: "User Execution",
           attack_url: "https://attack.mitre.org/techniques/T1204/",
-          control_effect: "detect",
           coverage: "full",
         },
         {
@@ -31,7 +30,6 @@ vi.mock("../api", () => ({
           technique_code: "T1566",
           technique_name: "Phishing",
           attack_url: "https://attack.mitre.org/techniques/T1566/",
-          control_effect: "prevent",
           coverage: "full",
         },
       ],

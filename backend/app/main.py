@@ -96,6 +96,7 @@ from app.services.confidence import sync_tool_capability_confidence
 from app.services.confidence import calculate_confidence
 from app.services.coverage import compute_coverage
 from app.services.docs import get_capability_docs, get_mapping_docs, get_tool_type_docs
+from app.services.mappings import get_structural_technique_maps
 from app.services.tool_templates import (
     apply_templates_to_tool,
     get_ranked_templates,
@@ -277,6 +278,7 @@ def serialize_tool(tool: Tool) -> ToolRead:
 
 
 def serialize_capability_read(capability: Capability) -> CapabilityRead:
+    structural_maps = get_structural_technique_maps(capability)
     return CapabilityRead(
         id=capability.id,
         code=capability.code,
@@ -298,13 +300,9 @@ def serialize_capability_read(capability: Capability) -> CapabilityRead:
                 technique_code=entry.technique.code,
                 technique_name=entry.technique.name,
                 attack_url=f"https://attack.mitre.org/techniques/{entry.technique.code.replace('.', '/')}/",
-                control_effect=entry.control_effect,
                 coverage=entry.coverage,
             )
-            for entry in sorted(
-                capability.technique_maps,
-                key=lambda item: (item.technique.code, item.control_effect),
-            )
+            for entry in structural_maps
         ],
     )
 

@@ -271,7 +271,6 @@ export interface CapabilityTechniqueLink {
   technique_code: string;
   technique_name: string;
   attack_url: string;
-  control_effect: Exclude<ControlEffect, "none">;
   coverage: MappingCoverage;
 }
 

@@ -147,18 +147,6 @@ def compute_coverage(db: Session) -> list[TechniqueCoverageRead]:
     return [_build_technique_coverage_row(technique, response_tools) for technique in techniques]
 
 
-def resolve_effect_for_technique(configured_effect: str, available_effects: list[str]) -> str:
-    matching_effects = [
-        effect
-        for effect in available_effects
-        if COVERAGE_PRIORITY[effect] <= COVERAGE_PRIORITY[configured_effect]
-    ]
-    if not matching_effects:
-        return "none"
-
-    return max(matching_effects, key=lambda effect: COVERAGE_PRIORITY[effect])
-
-
 def _build_technique_coverage_row(technique: Technique, response_tools: list[Tool]) -> TechniqueCoverageRead:
     (
         contributions,
@@ -338,14 +326,17 @@ def _collect_contributions_for_technique(
     missing_data_flags: list[str] = []
     unconfigured_flags: list[str] = []
     partially_configured_flags: list[str] = []
-    technique_effects_by_capability: dict[int, list[CapabilityTechniqueMap]] = {}
+    technique_mappings_by_capability: dict[int, list[CapabilityTechniqueMap]] = {}
 
     for capability_map in technique.capability_maps:
-        technique_effects_by_capability.setdefault(capability_map.capability_id, []).append(capability_map)
+        technique_mappings_by_capability.setdefault(capability_map.capability_id, []).append(capability_map)
 
-    for capability_maps in technique_effects_by_capability.values():
+    for capability_maps in technique_mappings_by_capability.values():
         capability = capability_maps[0].capability
-        available_effects = [entry.control_effect for entry in capability_maps]
+        strongest_mapping = max(
+            capability_maps,
+            key=lambda entry: 1 if entry.coverage == "full" else 0,
+        )
 
         for tool_capability in capability.tool_capabilities:
             if tool_capability.implementation_level == "none":
@@ -406,11 +397,7 @@ def _collect_contributions_for_technique(
                     "partial" if degraded_by_configuration or resolved_implementation_level == "partial" else resolved_implementation_level
                 )
 
-            applied_effect = resolve_effect_for_technique(
-                configured_effect,
-                available_effects,
-            )
-            if applied_effect == "none":
+            if configured_effect == "none":
                 continue
 
             total_questions = (
@@ -426,12 +413,6 @@ def _collect_contributions_for_technique(
                 if summary.confidence_source == "declared":
                     confidence_source = "declared"
 
-            best_map = next(
-                entry
-                for entry in capability_maps
-                if entry.control_effect == applied_effect
-            )
-
             contributions.append(
                 TechniqueContribution(
                     tool_id=tool_capability.tool_id,
@@ -441,14 +422,14 @@ def _collect_contributions_for_technique(
                     capability_id=capability.id,
                     capability_code=capability.code,
                     capability_name=capability.name,
-                    control_effect=applied_effect,
+                    control_effect=configured_effect,
                     configured_effect_default=configured_effect_default,
                     control_effect_source=control_effect_source,
                     override_applied=control_effect_source == "override",
                     implementation_level=implementation_level,
                     confidence_level=confidence_level,
                     confidence_source=confidence_source,
-                    mapping_coverage=best_map.coverage,
+                    mapping_coverage=strongest_mapping.coverage,
                     dependency_warnings=dependency_warnings,
                     configuration_status=configuration_status,
                     effectively_active=not blocked_by_configuration,

@@ -14,9 +14,11 @@ from app.schemas import (
     DocsToolTypeMappingRead,
     DocsToolTypeRead,
 )
+from app.services.mappings import get_structural_technique_maps
 
 
 def _serialize_capability(capability: Capability) -> CapabilityRead:
+    structural_maps = get_structural_technique_maps(capability)
     return CapabilityRead(
         id=capability.id,
         code=capability.code,
@@ -38,10 +40,9 @@ def _serialize_capability(capability: Capability) -> CapabilityRead:
                 technique_code=mapping.technique.code,
                 technique_name=mapping.technique.name,
                 attack_url=f"https://attack.mitre.org/techniques/{mapping.technique.code.replace('.', '/')}/",
-                control_effect=mapping.control_effect,
                 coverage=mapping.coverage,
             )
-            for mapping in sorted(capability.technique_maps, key=lambda item: (item.technique.code, item.control_effect))
+            for mapping in structural_maps
         ],
     )
 
@@ -126,11 +127,11 @@ def get_capability_docs(db: Session) -> list[DocsCapabilityRead]:
 
     rows: list[DocsCapabilityRead] = []
     for capability in capabilities:
-        effect_set = sorted({mapping.control_effect for mapping in capability.technique_maps})
+        structural_maps = get_structural_technique_maps(capability)
         related_techniques = sorted(
             {
                 f"{mapping.technique.code} {mapping.technique.name}"
-                for mapping in capability.technique_maps
+                for mapping in structural_maps
             }
         )
         tool_types = sorted(
@@ -141,8 +142,9 @@ def get_capability_docs(db: Session) -> list[DocsCapabilityRead]:
             }
         )
         purpose = (
-            f"Supports {', '.join(effect_set) if effect_set else 'mapped'} coverage across "
-            f"{len(related_techniques)} ATT&CK techniques."
+            "Structurally maps this capability to "
+            f"{len(related_techniques)} ATT&CK techniques. Actual detect/block/prevent outcomes "
+            "come from tool assignments and per-technique overrides."
         )
         rows.append(
             DocsCapabilityRead(

@@ -25,8 +25,10 @@ During ATT&CK coverage evaluation, DefenseGraph now resolves the effective effec
 
 1. Start with the tool capability default.
 2. If an override exists for that technique, use the override instead.
-3. Apply the existing capability-to-technique mapping constraints.
+3. Confirm the capability is structurally mapped to that technique.
 4. Aggregate all resulting tool contributions for the technique.
+
+The structural mapping does not clip the result. Once the relationship exists, the override is authoritative for that technique.
 
 Coverage outputs now reflect the effective post-override result:
 
@@ -53,5 +55,6 @@ Existing databases keep their previous behavior after migration:
 
 - legacy `control_effect` values move to `control_effect_default`
 - no technique overrides are created automatically
+- legacy `CapabilityTechniqueMap.control_effect` values remain in the schema as deprecated metadata and are ignored by runtime effect evaluation
 
 Until a user adds overrides, coverage behaves exactly as it did before.
