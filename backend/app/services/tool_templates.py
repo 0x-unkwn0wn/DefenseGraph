@@ -95,12 +95,12 @@ def apply_templates_to_tool(
             assignment = ToolCapability(
                 tool_id=tool.id,
                 capability_id=template.capability_id,
-                control_effect=item.control_effect or template.default_effect,
+                control_effect_default=item.control_effect or template.default_effect,
                 implementation_level=item.implementation_level or template.default_implementation_level,
             )
             db.add(assignment)
         else:
-            assignment.control_effect = item.control_effect or template.default_effect
+            assignment.control_effect_default = item.control_effect or template.default_effect
             assignment.implementation_level = item.implementation_level or template.default_implementation_level
 
     db.commit()

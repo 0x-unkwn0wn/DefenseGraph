@@ -77,14 +77,16 @@ export function CapabilityDetailPage({ capabilityId }: CapabilityDetailPageProps
               <span className="muted">No tools implement this capability yet.</span>
             </div>
           ) : (
-            detail.implementing_tools.map((tool) => (
+            detail.implementing_tools.map((tool) => {
+              const defaultEffect = tool.control_effect_default ?? tool.control_effect ?? "none";
+              return (
               <div key={tool.tool_id} className="detail-item stacked">
                 <div className="detail-row">
                   <a href={`#/tools/${tool.tool_id}`} className="capability-link">
                     {tool.tool_name}
                   </a>
                   <div className="workspace-badges">
-                    <span className={`coverage-pill ${tool.control_effect}`}>{tool.control_effect}</span>
+                    <span className={`coverage-pill ${defaultEffect}`}>{defaultEffect}</span>
                     <span className="count-chip">{tool.implementation_level}</span>
                     <span className={`coverage-pill ${tool.confidence_level}`}>
                       {tool.confidence_source} / {tool.confidence_level}
@@ -125,7 +127,8 @@ export function CapabilityDetailPage({ capabilityId }: CapabilityDetailPageProps
                   <p className="muted">No assessment responses recorded yet.</p>
                 )}
               </div>
-            ))
+              );
+            })
           )}
         </div>
       </Card>

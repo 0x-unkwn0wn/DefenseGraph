@@ -232,6 +232,30 @@ class ToolCapabilityScopeSubmission(BaseModel):
     scopes: list[ToolCapabilityScopeUpsert]
 
 
+class ToolCapabilityTechniqueOverrideRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    tool_capability_id: int
+    technique_id: int
+    technique_code: str
+    technique_name: str
+    control_effect_override: ControlEffect
+    implementation_level_override: Literal["partial", "full"] | None
+    notes: str
+
+
+class ToolCapabilityTechniqueOverrideUpsert(BaseModel):
+    technique_id: int
+    control_effect_override: ControlEffect = "none"
+    implementation_level_override: Literal["partial", "full"] | None = None
+    notes: str = ""
+
+
+class ToolCapabilityTechniqueOverrideSubmission(BaseModel):
+    overrides: list[ToolCapabilityTechniqueOverrideUpsert]
+
+
 class ScopeSummaryRead(BaseModel):
     full_scopes: list[str]
     partial_scopes: list[str]
@@ -279,7 +303,7 @@ class ToolCapabilityRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     capability_id: int
-    control_effect: ControlEffect
+    control_effect_default: ControlEffect
     implementation_level: ImplementationLevel
     confidence_source: ConfidenceSource
     confidence_level: ConfidenceLevel
@@ -300,6 +324,7 @@ class ToolCapabilityDetailRead(BaseModel):
     configuration_questions: list[CapabilityConfigurationQuestionRead]
     configuration_answers: list[ToolCapabilityConfigurationAnswerRead]
     scopes: list[ToolCapabilityScopeRead]
+    technique_overrides: list[ToolCapabilityTechniqueOverrideRead]
     relevant_scopes: list[TechniqueRelevantScopeRead]
 
 
@@ -337,7 +362,7 @@ class ToolTypesUpdate(BaseModel):
 
 class ToolCapabilityUpsert(BaseModel):
     capability_id: int
-    control_effect: ControlEffect
+    control_effect_default: ControlEffect
     implementation_level: ImplementationLevel
 
 
@@ -348,7 +373,7 @@ class CapabilityImplementingToolRead(BaseModel):
     tool_category: ToolCategory
     tool_types: list[ToolType]
     tool_type_labels: list[str] = []
-    control_effect: ControlEffect
+    control_effect_default: ControlEffect
     implementation_level: ImplementationLevel
     confidence_source: ConfidenceSource
     confidence_level: ConfidenceLevel
@@ -524,6 +549,9 @@ class TechniqueCoverageContributionRead(BaseModel):
     capability_code: str
     capability_name: str
     control_effect: CoverageType
+    configured_effect_default: ControlEffect
+    control_effect_source: Literal["default", "override"]
+    override_applied: bool
     implementation_level: ImplementationLevel
     confidence_level: ConfidenceLevel
     confidence_source: ConfidenceSource
@@ -548,6 +576,11 @@ class TechniqueCoverageRead(BaseModel):
     technique_name: str
     # Direct link to the MITRE ATT&CK page for this technique.
     attack_url: str
+    available_effects: list[CoverageType]
+    best_effect: CoverageType
+    detection_count: int
+    blocking_count: int
+    prevention_count: int
     coverage_type: CoverageType
     effective_control_effect: CoverageType
     effective_outcome: EffectiveOutcome

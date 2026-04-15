@@ -24,6 +24,7 @@ from app.models import (
     ToolCapabilityConfigurationProfile,
     ToolCapabilityEvidence,
     ToolCapabilityScope,
+    ToolCapabilityTechniqueOverride,
     ToolDataSource,
     ToolResponseAction,
     Vendor,
@@ -97,7 +98,7 @@ def _restore_payload(db: Session, payload: dict[str, list[dict[str, object]]]) -
         row = ToolCapability(
             tool_id=int(assignment["tool_id"]),
             capability_id=capability_id,
-            control_effect=str(assignment["control_effect"]),
+            control_effect_default=str(assignment["control_effect_default"]),
             implementation_level=str(assignment["implementation_level"]),
             confidence_source=str(assignment["confidence_source"]),
             confidence_level=str(assignment["confidence_level"]),
@@ -221,6 +222,25 @@ def _restore_payload(db: Session, payload: dict[str, list[dict[str, object]]]) -
             )
         )
 
+    for entry in payload["technique_overrides"]:
+        assignment_id = assignment_id_by_key.get((int(entry["tool_id"]), str(entry["capability_code"])))
+        technique_id = technique_ids_by_code.get(str(entry["technique_code"]))
+        if assignment_id is None or technique_id is None:
+            continue
+        db.add(
+            ToolCapabilityTechniqueOverride(
+                tool_capability_id=assignment_id,
+                technique_id=technique_id,
+                control_effect_override=str(entry["control_effect_override"]),
+                implementation_level_override=(
+                    str(entry["implementation_level_override"])
+                    if entry["implementation_level_override"] is not None
+                    else None
+                ),
+                notes=str(entry["notes"]),
+            )
+        )
+
     for row in payload["bas_validations"]:
         technique_id = technique_ids_by_code.get(str(row["technique_code"]))
         if technique_id is None:
@@ -257,6 +277,7 @@ def _schema_is_current(connection: sqlite3.Connection) -> bool:
         "tool_capability_configuration_answers",
         "coverage_scopes",
         "tool_capability_scopes",
+        "tool_capability_technique_overrides",
         "technique_relevant_scopes",
         "bas_validations",
     }
@@ -281,7 +302,7 @@ def _schema_is_current(connection: sqlite3.Connection) -> bool:
             "requires_configuration",
             "configuration_profile_type",
         }.issubset(capability_columns)
-        and {"id", "control_effect", "confidence_source", "confidence_level"}.issubset(tool_capability_columns)
+        and {"id", "control_effect_default", "confidence_source", "confidence_level"}.issubset(tool_capability_columns)
         and {"optional_tags", "priority"}.issubset(_get_table_columns(connection, "tool_capability_templates"))
         and {"bas_result", "technique_id", "last_validation_date"}.issubset(_get_table_columns(connection, "bas_validations"))
     )
@@ -303,6 +324,7 @@ def _extract_legacy_payload(connection: sqlite3.Connection) -> dict[str, list[di
         "configuration_profiles": [],
         "configuration_answers": [],
         "scope_assignments": [],
+        "technique_overrides": [],
         "bas_validations": [],
     }
 
@@ -327,7 +349,9 @@ def _extract_legacy_payload(connection: sqlite3.Connection) -> dict[str, list[di
     select_columns = ["tool_id", "capability_id", "implementation_level"]
     if "id" in tool_capability_columns:
         select_columns.insert(0, "id")
-    if "control_effect" in tool_capability_columns:
+    if "control_effect_default" in tool_capability_columns:
+        select_columns.append("control_effect_default")
+    elif "control_effect" in tool_capability_columns:
         select_columns.append("control_effect")
     if "confidence_source" in tool_capability_columns:
         select_columns.append("confidence_source")
@@ -336,7 +360,12 @@ def _extract_legacy_payload(connection: sqlite3.Connection) -> dict[str, list[di
 
     migrated_assignments: dict[tuple[int, str], dict[str, object]] = {}
     legacy_assignment_key_by_row_id: dict[int, tuple[int, str]] = {}
-    has_explicit_effect = "control_effect" in tool_capability_columns
+    effect_column = (
+        "control_effect_default"
+        if "control_effect_default" in tool_capability_columns
+        else "control_effect" if "control_effect" in tool_capability_columns else None
+    )
+    has_explicit_effect = effect_column is not None
 
     for row in connection.execute(f"SELECT {', '.join(select_columns)} FROM tool_capabilities").fetchall():
         row_values = dict(zip(select_columns, row, strict=True))
@@ -349,7 +378,7 @@ def _extract_legacy_payload(connection: sqlite3.Connection) -> dict[str, list[di
         capability_code, control_effect = _resolve_capability_code_and_effect(
             legacy_code,
             has_explicit_effect,
-            row_values.get("control_effect"),
+            row_values.get(effect_column) if effect_column is not None else None,
         )
         if capability_code is None:
             continue
@@ -367,15 +396,15 @@ def _extract_legacy_payload(connection: sqlite3.Connection) -> dict[str, list[di
             migrated_assignments[assignment_key] = {
                 "tool_id": tool_id,
                 "capability_code": capability_code,
-                "control_effect": control_effect,
+                "control_effect_default": control_effect,
                 "implementation_level": implementation_level,
                 "confidence_source": confidence_source,
                 "confidence_level": confidence_level,
             }
             continue
 
-        if CONTROL_EFFECT_PRIORITY[control_effect] > CONTROL_EFFECT_PRIORITY[str(current["control_effect"])]:
-            current["control_effect"] = control_effect
+        if CONTROL_EFFECT_PRIORITY[control_effect] > CONTROL_EFFECT_PRIORITY[str(current["control_effect_default"])]:
+            current["control_effect_default"] = control_effect
         if IMPLEMENTATION_LEVEL_PRIORITY[implementation_level] > IMPLEMENTATION_LEVEL_PRIORITY[str(current["implementation_level"])]:
             current["implementation_level"] = implementation_level
         if _confidence_source_rank(confidence_source) > _confidence_source_rank(str(current["confidence_source"])):
@@ -523,6 +552,38 @@ def _extract_legacy_payload(connection: sqlite3.Connection) -> dict[str, list[di
                     "capability_code": assignment_key[1],
                     "scope_code": str(scope_code),
                     "status": str(status),
+                    "notes": str(notes or ""),
+                }
+            )
+
+    if (
+        _table_exists(connection, "tool_capability_technique_overrides")
+        and _table_exists(connection, "techniques")
+        and "id" in tool_capability_columns
+    ):
+        for (
+            legacy_tool_capability_id,
+            technique_code,
+            control_effect_override,
+            implementation_level_override,
+            notes,
+        ) in connection.execute(
+            """
+            SELECT tcto.tool_capability_id, t.code, tcto.control_effect_override, tcto.implementation_level_override, tcto.notes
+            FROM tool_capability_technique_overrides tcto
+            JOIN techniques t ON t.id = tcto.technique_id
+            """
+        ).fetchall():
+            assignment_key = legacy_assignment_key_by_row_id.get(int(legacy_tool_capability_id))
+            if assignment_key is None:
+                continue
+            payload["technique_overrides"].append(
+                {
+                    "tool_id": assignment_key[0],
+                    "capability_code": assignment_key[1],
+                    "technique_code": str(technique_code),
+                    "control_effect_override": str(control_effect_override),
+                    "implementation_level_override": implementation_level_override,
                     "notes": str(notes or ""),
                 }
             )

@@ -60,9 +60,9 @@ def get_tool_type_docs(db: Session) -> list[DocsToolTypeRead]:
         active_assignments = [
             assignment
             for assignment in tool.capabilities
-            if assignment.control_effect != "none" and assignment.implementation_level != "none"
+            if assignment.control_effect_default != "none" and assignment.implementation_level != "none"
         ]
-        active_outputs = sorted({assignment.control_effect.title() for assignment in active_assignments})
+        active_outputs = sorted({assignment.control_effect_default.title() for assignment in active_assignments})
         data_inputs = sorted(
             {
                 entry.data_source.name

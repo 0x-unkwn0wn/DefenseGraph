@@ -28,6 +28,7 @@ from app.models import (
     ToolCapabilityConfigurationProfile,
     ToolCapabilityEvidence,
     ToolCapabilityScope,
+    ToolCapabilityTechniqueOverride,
     ToolCapabilityTemplate,
     ToolDataSource,
     ToolResponseAction,
@@ -68,6 +69,8 @@ from app.schemas import (
     ToolCapabilityRead,
     ToolCapabilityScopeRead,
     ToolCapabilityScopeSubmission,
+    ToolCapabilityTechniqueOverrideRead,
+    ToolCapabilityTechniqueOverrideSubmission,
     ToolCapabilityTemplateApplyRequest,
     ToolCapabilityTemplateRead,
     ToolCapabilityUpsert,
@@ -222,6 +225,7 @@ def get_tool_capability_or_404(db: Session, tool_id: int, capability_id: int) ->
             joinedload(ToolCapability.configuration_profile),
             joinedload(ToolCapability.configuration_answers),
             joinedload(ToolCapability.scopes).joinedload(ToolCapabilityScope.coverage_scope),
+            joinedload(ToolCapability.technique_overrides).joinedload(ToolCapabilityTechniqueOverride.technique),
         )
         .where(
             ToolCapability.tool_id == tool_id,
@@ -314,7 +318,7 @@ def serialize_tool_capability_read(assignment: ToolCapability) -> ToolCapability
     summary = calculate_confidence(assignment, total_questions)
     return ToolCapabilityRead(
         capability_id=assignment.capability_id,
-        control_effect=assignment.control_effect,
+        control_effect_default=assignment.control_effect_default,
         implementation_level=assignment.implementation_level,
         confidence_source=summary.confidence_source,
         confidence_level=summary.confidence_level,
@@ -398,6 +402,21 @@ def serialize_tool_capability_scope(scope: ToolCapabilityScope) -> ToolCapabilit
     )
 
 
+def serialize_tool_capability_override(
+    override: ToolCapabilityTechniqueOverride,
+) -> ToolCapabilityTechniqueOverrideRead:
+    return ToolCapabilityTechniqueOverrideRead(
+        id=override.id,
+        tool_capability_id=override.tool_capability_id,
+        technique_id=override.technique_id,
+        technique_code=override.technique.code,
+        technique_name=override.technique.name,
+        control_effect_override=override.control_effect_override,
+        implementation_level_override=override.implementation_level_override,
+        notes=override.notes,
+    )
+
+
 def serialize_technique_relevant_scope(link: TechniqueRelevantScope) -> TechniqueRelevantScopeRead:
     return TechniqueRelevantScopeRead(
         coverage_scope_id=link.coverage_scope_id,
@@ -425,7 +444,7 @@ def serialize_assignment_detail(tool_capability: ToolCapability) -> ToolCapabili
         capability=serialize_capability_read(tool_capability.capability),
         assignment=ToolCapabilityRead(
             capability_id=tool_capability.capability_id,
-            control_effect=tool_capability.control_effect,
+            control_effect_default=tool_capability.control_effect_default,
             implementation_level=tool_capability.implementation_level,
             confidence_source=summary.confidence_source,
             confidence_level=summary.confidence_level,
@@ -488,6 +507,13 @@ def serialize_assignment_detail(tool_capability: ToolCapability) -> ToolCapabili
             serialize_tool_capability_scope(scope)
             for scope in sorted(tool_capability.scopes, key=lambda item: item.coverage_scope.name)
             if scope.status != "none"
+        ],
+        technique_overrides=[
+            serialize_tool_capability_override(override)
+            for override in sorted(
+                tool_capability.technique_overrides,
+                key=lambda item: item.technique.code,
+            )
         ],
         relevant_scopes=[
             serialize_technique_relevant_scope(scope_link)
@@ -576,7 +602,7 @@ def _serialize_capability_implementing_tool(assignment: ToolCapability) -> Capab
         tool_category=assignment.tool.category,
         tool_types=list(assignment.tool.tool_types),
         tool_type_labels=list(assignment.tool.tool_type_labels),
-        control_effect=assignment.control_effect,
+        control_effect_default=assignment.control_effect_default,
         implementation_level=assignment.implementation_level,
         confidence_source=summary.confidence_source,
         confidence_level=summary.confidence_level,
@@ -790,7 +816,7 @@ def upsert_tool_capability(tool_id: int, payload: ToolCapabilityUpsert, db: Sess
         )
     )
 
-    if payload.control_effect == "none" or payload.implementation_level == "none":
+    if payload.control_effect_default == "none" and payload.implementation_level == "none":
         if assignment is not None:
             db.delete(assignment)
             db.commit()
@@ -800,13 +826,13 @@ def upsert_tool_capability(tool_id: int, payload: ToolCapabilityUpsert, db: Sess
         assignment = ToolCapability(
             tool_id=tool.id,
             capability_id=capability.id,
-            control_effect=payload.control_effect,
+            control_effect_default=payload.control_effect_default,
             implementation_level=payload.implementation_level,
         )
         db.add(assignment)
         db.flush()
     else:
-        assignment.control_effect = payload.control_effect
+        assignment.control_effect_default = payload.control_effect_default
         assignment.implementation_level = payload.implementation_level
 
     sync_tool_capability_confidence(assignment)
@@ -847,6 +873,61 @@ def upsert_tool_capability_scopes(
         else:
             existing.status = item.status
             existing.notes = item.notes.strip()
+
+    db.commit()
+    return serialize_assignment_detail(get_tool_capability_or_404(db, tool_id, capability_id))
+
+
+@app.post(
+    "/tools/{tool_id}/capabilities/{capability_id}/technique-overrides",
+    response_model=ToolCapabilityDetailRead,
+)
+def upsert_tool_capability_technique_overrides(
+    tool_id: int,
+    capability_id: int,
+    payload: ToolCapabilityTechniqueOverrideSubmission,
+    db: Session = Depends(get_db),
+):
+    assignment = get_tool_capability_or_404(db, tool_id, capability_id)
+    related_technique_ids = {
+        technique_map.technique_id
+        for technique_map in assignment.capability.technique_maps
+    }
+    existing_overrides = {
+        override.technique_id: override
+        for override in assignment.technique_overrides
+    }
+
+    for item in payload.overrides:
+        if item.technique_id not in related_technique_ids:
+            raise HTTPException(status_code=404, detail="Technique override target not found for this capability")
+
+        existing = existing_overrides.get(item.technique_id)
+        notes = item.notes.strip()
+        if (
+            item.control_effect_override == "none"
+            and item.implementation_level_override is None
+            and not notes
+        ):
+            if existing is not None:
+                db.delete(existing)
+            continue
+
+        if existing is None:
+            db.add(
+                ToolCapabilityTechniqueOverride(
+                    tool_capability_id=assignment.id,
+                    technique_id=item.technique_id,
+                    control_effect_override=item.control_effect_override,
+                    implementation_level_override=item.implementation_level_override,
+                    notes=notes,
+                )
+            )
+            continue
+
+        existing.control_effect_override = item.control_effect_override
+        existing.implementation_level_override = item.implementation_level_override
+        existing.notes = notes
 
     db.commit()
     return serialize_assignment_detail(get_tool_capability_or_404(db, tool_id, capability_id))
@@ -1107,7 +1188,11 @@ def _derive_primary_function(tool: Tool) -> str:
     types = set(tool.tool_types)
     if "control" in types:
         strongest = max(
-            (tc.control_effect for tc in tool.capabilities if tc.control_effect != "none"),
+            (
+                tc.control_effect_default
+                for tc in tool.capabilities
+                if tc.control_effect_default != "none"
+            ),
             key=lambda e: CONTROL_EFFECT_PRIORITY[e],
             default=None,
         )
@@ -1154,7 +1239,7 @@ def list_controls(db: Session = Depends(get_db)):
                 technique_map.technique.code
                 for tc in tool.capabilities
                 for technique_map in tc.capability.technique_maps
-                if tc.control_effect != "none" and tc.implementation_level != "none"
+                if tc.control_effect_default != "none" and tc.implementation_level != "none"
             }
         )
         controls.append(

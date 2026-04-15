@@ -2318,7 +2318,7 @@ def _normalize_known_tools(db: Session) -> None:
                     ToolCapability(
                         tool_id=tool.id,
                         capability_id=capability.id,
-                        control_effect=control_effect,
+                        control_effect_default=control_effect,
                         implementation_level=implementation_level,
                     )
                 )

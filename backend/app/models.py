@@ -242,7 +242,7 @@ class ToolCapability(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
     tool_id: Mapped[int] = mapped_column(ForeignKey("tools.id"), nullable=False, index=True)
     capability_id: Mapped[int] = mapped_column(ForeignKey("capabilities.id"), nullable=False, index=True)
-    control_effect: Mapped[str] = mapped_column(String(20), nullable=False)
+    control_effect_default: Mapped[str] = mapped_column(String(20), nullable=False)
     implementation_level: Mapped[str] = mapped_column(String(20), nullable=False)
     confidence_source: Mapped[str] = mapped_column(String(20), nullable=False, default="declared")
     confidence_level: Mapped[str] = mapped_column(String(20), nullable=False, default="low")
@@ -275,6 +275,36 @@ class ToolCapability(Base):
         back_populates="tool_capability",
         cascade="all, delete-orphan",
     )
+    technique_overrides = relationship(
+        "ToolCapabilityTechniqueOverride",
+        back_populates="tool_capability",
+        cascade="all, delete-orphan",
+    )
+
+
+class ToolCapabilityTechniqueOverride(Base):
+    __tablename__ = "tool_capability_technique_overrides"
+    __table_args__ = (
+        UniqueConstraint(
+            "tool_capability_id",
+            "technique_id",
+            name="uq_tool_capability_technique_override",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    tool_capability_id: Mapped[int] = mapped_column(
+        ForeignKey("tool_capabilities.id"),
+        nullable=False,
+        index=True,
+    )
+    technique_id: Mapped[int] = mapped_column(ForeignKey("techniques.id"), nullable=False, index=True)
+    control_effect_override: Mapped[str] = mapped_column(String(20), nullable=False, default="none")
+    implementation_level_override: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    notes: Mapped[str] = mapped_column(Text, nullable=False, default="")
+
+    tool_capability = relationship("ToolCapability", back_populates="technique_overrides")
+    technique = relationship("Technique")
 
 
 class CoverageScope(Base):

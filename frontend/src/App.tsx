@@ -15,6 +15,7 @@ import {
   saveToolCapabilityConfigurationAnswers,
   saveToolCapabilityConfigurationProfile,
   saveToolCapabilityScopes,
+  saveToolCapabilityTechniqueOverrides,
   setToolCapability,
   setToolDataSource,
   setToolResponseAction,
@@ -337,6 +338,26 @@ export default function App() {
     }
   }
 
+  async function handleSaveTechniqueOverrides(
+    toolId: number,
+    capabilityId: number,
+    overrides: Array<{
+      technique_id: number;
+      control_effect_override: ControlEffect;
+      implementation_level_override: Exclude<ImplementationLevel, "none"> | null;
+      notes: string;
+    }>,
+  ) {
+    setError(null);
+    try {
+      await saveToolCapabilityTechniqueOverrides(toolId, capabilityId, overrides);
+      await refreshToolsAndCoverage();
+    } catch (actionError) {
+      setError(actionError instanceof Error ? actionError.message : "Failed to save ATT&CK behavior");
+      throw actionError;
+    }
+  }
+
   async function handleSetToolDataSource(
     toolId: number,
     dataSourceId: number,
@@ -451,6 +472,7 @@ export default function App() {
           onSaveConfigurationProfile={handleSaveConfigurationProfile}
           onSaveConfigurationAnswers={handleSaveConfigurationAnswers}
           onSaveCapabilityScopes={handleSaveCapabilityScopes}
+          onSaveTechniqueOverrides={handleSaveTechniqueOverrides}
           onUpdateTags={handleUpdateToolTags}
           onUpdateToolTypes={handleUpdateToolTypes}
         />

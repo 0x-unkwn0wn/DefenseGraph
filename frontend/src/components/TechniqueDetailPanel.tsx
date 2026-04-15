@@ -177,28 +177,26 @@ export function TechniqueDetailPanel({ technique, onClose }: TechniqueDetailPane
       </div>
 
       <div className="detail-panel-section">
-        <span className="detail-label">Detection and control tools</span>
+        <span className="detail-label">Tool contributions</span>
         {uniqueTools.length === 0 ? (
           <p className="muted">No tools currently cover this technique.</p>
         ) : (
           <div className="detail-list">
-            {Array.from(
-              new Map(
-                technique.contributions.map((contribution) => [
-                  contribution.toolId,
-                  {
-                    id: contribution.toolId,
-                    name: contribution.toolName,
-                    type: contribution.toolTypes.map((t) => TOOL_TYPE_LABEL[t]).join(", "),
-                  },
-                ]),
-              ).values(),
-            ).map((tool) => (
-              <div key={tool.id} className="detail-item">
+            {technique.contributions.map((contribution) => (
+              <div key={`${contribution.toolId}-${contribution.capabilityId}-${contribution.controlEffect}`} className="detail-item stacked">
                 <div className="detail-row">
-                  <span>{tool.name}</span>
-                  <span className="count-chip">{tool.type}</span>
+                  <span>{contribution.toolName}</span>
+                  <div className="workspace-badges">
+                    <span className={`coverage-pill ${contribution.controlEffect}`}>
+                      {contribution.controlEffect}
+                    </span>
+                    <span className="count-chip">{contribution.controlEffectSource}</span>
+                  </div>
                 </div>
+                <p className="muted">
+                  {contribution.capabilityName} | {contribution.toolTypes.map((t) => TOOL_TYPE_LABEL[t]).join(", ")} | default{" "}
+                  {contribution.configuredEffectDefault} | {contribution.implementationLevel} implementation
+                </p>
               </div>
             ))}
           </div>
@@ -244,9 +242,9 @@ export function TechniqueDetailPanel({ technique, onClose }: TechniqueDetailPane
                   </span>
                 </div>
                 <p className="muted">
-                  {contribution.toolName} | {contribution.toolTypes.map((t) => TOOL_TYPE_LABEL[t]).join(", ")} | configured {contribution.configuredEffect} |{" "}
-                  {contribution.implementationLevel} implementation | {contribution.confidenceLevel} confidence |{" "}
-                  {contribution.mappingCoverage} mapping
+                  {contribution.toolName} | {contribution.toolTypes.map((t) => TOOL_TYPE_LABEL[t]).join(", ")} | default{" "}
+                  {contribution.configuredEffectDefault} | effective {contribution.controlEffect} ({contribution.controlEffectSource}) |{" "}
+                  {contribution.implementationLevel} implementation | {contribution.confidenceLevel} confidence | {contribution.mappingCoverage} mapping
                   {contribution.configurationStatus ? ` | config ${contribution.configurationStatus}` : ""}
                 </p>
                 {contribution.dependencyWarnings.length > 0 ? (

@@ -98,7 +98,7 @@ class DefenseGraphConfidenceTests(unittest.TestCase):
             f"/tools/{tool_id}/capabilities",
             json={
                 "capability_id": capability_id,
-                "control_effect": control_effect,
+                "control_effect_default": control_effect,
                 "implementation_level": implementation_level,
             },
         )
@@ -135,6 +135,35 @@ class DefenseGraphConfidenceTests(unittest.TestCase):
         }
         response = self.client.post(
             f"/tools/{tool_id}/capabilities/{capability_id}/scopes",
+            json=payload,
+        )
+        self.assertEqual(response.status_code, 200)
+        return response.json()
+
+    def _set_technique_overrides(
+        self,
+        tool_id: int,
+        capability_id: int,
+        override_entries: list[tuple[str, str, str | None, str]],
+    ) -> dict:
+        technique_rows = self.client.get("/coverage").json()
+        technique_id_by_code = {
+            row["technique_code"]: row["technique_id"]
+            for row in technique_rows
+        }
+        payload = {
+            "overrides": [
+                {
+                    "technique_id": technique_id_by_code[technique_code],
+                    "control_effect_override": control_effect_override,
+                    "implementation_level_override": implementation_level_override,
+                    "notes": notes,
+                }
+                for technique_code, control_effect_override, implementation_level_override, notes in override_entries
+            ]
+        }
+        response = self.client.post(
+            f"/tools/{tool_id}/capabilities/{capability_id}/technique-overrides",
             json=payload,
         )
         self.assertEqual(response.status_code, 200)
@@ -178,6 +207,7 @@ class DefenseGraphConfidenceTests(unittest.TestCase):
         )
         self.assertEqual(assignment["confidence_source"], "declared")
         self.assertEqual(assignment["confidence_level"], "low")
+        self.assertEqual(assignment["control_effect_default"], "prevent")
 
     def test_requires_configuration_without_profile_stays_low_and_unconfigured(self):
         tool = self._create_tool("Cloud Edge", "Other")
@@ -563,7 +593,120 @@ class DefenseGraphConfidenceTests(unittest.TestCase):
         assignments = response.json()["capabilities"]
 
         self.assertEqual(len(assignments), 2)
-        self.assertTrue(any(item["control_effect"] == "block" for item in assignments))
+        self.assertTrue(any(item["control_effect_default"] == "block" for item in assignments))
+
+    def test_default_effect_applies_to_all_related_techniques_without_overrides(self):
+        tool = self._create_tool("Override Default Isolation", "EDR")
+        capability = self._find_capability("CAP-028")
+        self._assign_capability(tool["id"], capability["id"], "block", "full")
+        self._set_scopes(
+            tool["id"],
+            capability["id"],
+            [
+                ("endpoint_user_device", "full", "Endpoints"),
+                ("server", "full", "Servers"),
+                ("cloud_workload", "full", "Cloud"),
+            ],
+        )
+
+        coverage_rows = self.client.get("/coverage").json()
+        for technique_code in ("T1021", "T1041", "T1570"):
+            row = next(item for item in coverage_rows if item["technique_code"] == technique_code)
+            self.assertEqual(row["best_effect"], "block")
+            self.assertEqual(row["available_effects"], ["block"])
+            self.assertEqual(row["blocking_count"], 1)
+
+    def test_single_technique_override_changes_only_that_technique(self):
+        tool = self._create_tool("Selective Edge Control", "SASE")
+        capability = self._find_capability("CAP-025")
+        self._assign_capability(tool["id"], capability["id"], "block", "full")
+        self._set_scopes(
+            tool["id"],
+            capability["id"],
+            [
+                ("identity", "full", "Identity-aware remote access"),
+                ("public_facing_app", "full", "Internet-facing edge"),
+                ("server", "full", "Server workloads"),
+            ],
+        )
+        self._verify_configuration(tool["id"], capability["id"], ["yes"] * 10)
+        detail = self._set_technique_overrides(
+            tool["id"],
+            capability["id"],
+            [("T1133", "detect", None, "Remote services are only monitored")],
+        )
+
+        self.assertEqual(len(detail["technique_overrides"]), 1)
+        self.assertEqual(detail["technique_overrides"][0]["technique_code"], "T1133")
+        self.assertEqual(detail["technique_overrides"][0]["control_effect_override"], "detect")
+
+        coverage_rows = self.client.get("/coverage").json()
+        remote_row = next(item for item in coverage_rows if item["technique_code"] == "T1133")
+        exploit_row = next(item for item in coverage_rows if item["technique_code"] == "T1190")
+        self.assertEqual(remote_row["best_effect"], "detect")
+        self.assertEqual(remote_row["available_effects"], ["detect"])
+        self.assertEqual(exploit_row["best_effect"], "block")
+
+    def test_override_downgrade_changes_multi_tool_aggregation(self):
+        tool_a = self._create_tool("Policy Edge Control", "SASE")
+        tool_b = self._create_tool("Remote Access Monitor", "Identity")
+        capability_a = self._find_capability("CAP-025")
+        capability_b = self._find_capability("CAP-030")
+
+        self._assign_capability(tool_a["id"], capability_a["id"], "block", "full")
+        self._set_scopes(
+            tool_a["id"],
+            capability_a["id"],
+            [
+                ("identity", "full", "Identity"),
+                ("public_facing_app", "full", "Internet edge"),
+                ("server", "full", "Servers"),
+            ],
+        )
+        self._verify_configuration(tool_a["id"], capability_a["id"], ["yes"] * 10)
+        self._set_technique_overrides(
+            tool_a["id"],
+            capability_a["id"],
+            [("T1133", "detect", None, "Remote services are monitored, not blocked")],
+        )
+
+        self._assign_capability(tool_b["id"], capability_b["id"], "detect", "full")
+        self._set_scopes(
+            tool_b["id"],
+            capability_b["id"],
+            [
+                ("identity", "full", "Identity"),
+                ("public_facing_app", "full", "Internet edge"),
+            ],
+        )
+
+        row = next(item for item in self.client.get("/coverage").json() if item["technique_code"] == "T1133")
+        self.assertEqual(row["available_effects"], ["detect"])
+        self.assertEqual(row["best_effect"], "detect")
+        self.assertEqual(row["detection_count"], 2)
+
+    def test_prevent_still_wins_after_overrides_are_resolved(self):
+        tool_a = self._create_tool("Policy DLP 2", "DLP")
+        tool_b = self._create_tool("Suite DLP", "DLP")
+        capability_a = self._find_capability("CAP-104")
+        capability_b = self._find_capability("CAP-105")
+
+        self._assign_capability(tool_a["id"], capability_a["id"], "block", "full")
+        self._set_scopes(tool_a["id"], capability_a["id"], [("saas", "full", "SaaS only")])
+        self._set_technique_overrides(
+            tool_a["id"],
+            capability_a["id"],
+            [("T1567", "detect", None, "Only alert for sanctioned SaaS")],
+        )
+
+        self._assign_capability(tool_b["id"], capability_b["id"], "prevent", "full")
+        self._set_scopes(tool_b["id"], capability_b["id"], [("saas", "full", "SaaS enforcement")])
+        self._verify_configuration(tool_b["id"], capability_b["id"], ["yes", "yes", "yes"])
+
+        row = next(item for item in self.client.get("/coverage").json() if item["technique_code"] == "T1567")
+        self.assertEqual(row["available_effects"], ["prevent", "detect"])
+        self.assertEqual(row["best_effect"], "prevent")
+        self.assertEqual(row["prevention_count"], 1)
 
     def test_scope_endpoint_only_marks_multi_scope_technique_as_partial(self):
         tool = self._create_tool("Endpoint DLP", "DLP")
@@ -883,7 +1026,7 @@ class DefenseGraphConfidenceTests(unittest.TestCase):
                 ).fetchone()
                 capability_row = connection.execute(
                     """
-                    SELECT tc.control_effect, tc.implementation_level, tc.confidence_source, tc.confidence_level
+                    SELECT tc.control_effect_default, tc.implementation_level, tc.confidence_source, tc.confidence_level
                     FROM tool_capabilities tc
                     JOIN capabilities c ON c.id = tc.capability_id
                     WHERE tc.tool_id = 1 AND c.code = 'CAP-009'

@@ -148,7 +148,7 @@ export function setToolCapability(
     method: "POST",
     body: JSON.stringify({
       capability_id: capabilityId,
-      control_effect: controlEffect,
+      control_effect_default: controlEffect,
       implementation_level: implementationLevel,
     }),
   });
@@ -245,6 +245,22 @@ export function saveToolCapabilityScopes(
   return request<ToolCapabilityDetail>(`/tools/${toolId}/capabilities/${capabilityId}/scopes`, {
     method: "POST",
     body: JSON.stringify({ scopes }),
+  });
+}
+
+export function saveToolCapabilityTechniqueOverrides(
+  toolId: number,
+  capabilityId: number,
+  overrides: Array<{
+    technique_id: number;
+    control_effect_override: ControlEffect;
+    implementation_level_override: Exclude<ImplementationLevel, "none"> | null;
+    notes: string;
+  }>,
+) {
+  return request<ToolCapabilityDetail>(`/tools/${toolId}/capabilities/${capabilityId}/technique-overrides`, {
+    method: "POST",
+    body: JSON.stringify({ overrides }),
   });
 }
 

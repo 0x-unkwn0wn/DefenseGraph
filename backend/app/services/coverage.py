@@ -15,6 +15,7 @@ from app.models import (
     Tool,
     ToolCapability,
     ToolCapabilityScope,
+    ToolCapabilityTechniqueOverride,
     ToolDataSource,
     ToolResponseAction,
 )
@@ -49,6 +50,9 @@ class TechniqueContribution:
     capability_code: str
     capability_name: str
     control_effect: str
+    configured_effect_default: str
+    control_effect_source: str
+    override_applied: bool
     implementation_level: str
     confidence_level: str
     confidence_source: str
@@ -120,6 +124,11 @@ def compute_coverage(db: Session) -> list[TechniqueCoverageRead]:
             .joinedload(Capability.tool_capabilities)
             .joinedload(ToolCapability.scopes)
             .joinedload(ToolCapabilityScope.coverage_scope),
+            joinedload(Technique.capability_maps)
+            .joinedload(CapabilityTechniqueMap.capability)
+            .joinedload(Capability.tool_capabilities)
+            .joinedload(ToolCapability.technique_overrides)
+            .joinedload(ToolCapabilityTechniqueOverride.technique),
             # BAS validations are assurance records, not active control contributions.
             joinedload(Technique.bas_validations).joinedload(BASValidation.bas_tool),
         )
@@ -158,6 +167,7 @@ def _build_technique_coverage_row(technique: Technique, response_tools: list[Too
         partially_configured_flags,
     ) = _collect_contributions_for_technique(technique)
     scope_summary = _build_scope_summary(technique, contributions)
+    available_effects = _collect_available_effects(contributions)
     direct_effect = _strongest_effect(contributions)
     if _blocks_effective_coverage(technique, scope_summary):
         direct_effect = "none"
@@ -166,6 +176,9 @@ def _build_technique_coverage_row(technique: Technique, response_tools: list[Too
         for contribution in contributions
         if contribution.control_effect == direct_effect
     ]
+    detection_count = sum(1 for contribution in contributions if contribution.control_effect == "detect")
+    blocking_count = sum(1 for contribution in contributions if contribution.control_effect == "block")
+    prevention_count = sum(1 for contribution in contributions if contribution.control_effect == "prevent")
     tool_count = len({contribution.tool_id for contribution in contributions})
     confidence_level = _aggregate_confidence(effective_contributions)
     response_actions = _collect_response_actions_for_technique(technique, response_tools)
@@ -227,6 +240,11 @@ def _build_technique_coverage_row(technique: Technique, response_tools: list[Too
         technique_code=technique.code,
         technique_name=technique.name,
         attack_url=f"https://attack.mitre.org/techniques/{technique.code.replace('.', '/')}/",
+        available_effects=available_effects,
+        best_effect=direct_effect,
+        detection_count=detection_count,
+        blocking_count=blocking_count,
+        prevention_count=prevention_count,
         coverage_type=direct_effect,
         effective_control_effect=direct_effect,
         effective_outcome=effective_outcome,
@@ -260,6 +278,9 @@ def _build_technique_coverage_row(technique: Technique, response_tools: list[Too
                 capability_code=contribution.capability_code,
                 capability_name=contribution.capability_name,
                 control_effect=contribution.control_effect,
+                configured_effect_default=contribution.configured_effect_default,
+                control_effect_source=contribution.control_effect_source,
+                override_applied=contribution.override_applied,
                 implementation_level=contribution.implementation_level,
                 confidence_level=contribution.confidence_level,
                 confidence_source=contribution.confidence_source,
@@ -327,10 +348,7 @@ def _collect_contributions_for_technique(
         available_effects = [entry.control_effect for entry in capability_maps]
 
         for tool_capability in capability.tool_capabilities:
-            if (
-                tool_capability.implementation_level == "none"
-                or tool_capability.control_effect == "none"
-            ):
+            if tool_capability.implementation_level == "none":
                 continue
 
             # A tool contributes to active coverage only if it has "control"
@@ -354,6 +372,15 @@ def _collect_contributions_for_technique(
             elif degraded_by_configuration:
                 partially_configured_flags.extend(configuration_warnings)
 
+            (
+                configured_effect_default,
+                resolved_effect,
+                resolved_implementation_level,
+                control_effect_source,
+            ) = _resolve_tool_capability_behavior(tool_capability, technique.id)
+            if resolved_effect == "none":
+                continue
+
             # If the tool is analytics (and NOT also a control), force "detect".
             # A tool with ["control", "analytics"] uses its configured effect.
             is_analytics_only = "analytics" in tool_types and "control" not in tool_types
@@ -369,16 +396,14 @@ def _collect_contributions_for_technique(
                     if (
                         dependency_result["degraded"]
                         or degraded_by_configuration
-                        or tool_capability.implementation_level == "partial"
+                        or resolved_implementation_level == "partial"
                     )
-                    else tool_capability.implementation_level
+                    else resolved_implementation_level
                 )
             else:
-                configured_effect = tool_capability.control_effect
+                configured_effect = resolved_effect
                 implementation_level = (
-                    "partial"
-                    if degraded_by_configuration or tool_capability.implementation_level == "partial"
-                    else tool_capability.implementation_level
+                    "partial" if degraded_by_configuration or resolved_implementation_level == "partial" else resolved_implementation_level
                 )
 
             applied_effect = resolve_effect_for_technique(
@@ -417,6 +442,9 @@ def _collect_contributions_for_technique(
                     capability_code=capability.code,
                     capability_name=capability.name,
                     control_effect=applied_effect,
+                    configured_effect_default=configured_effect_default,
+                    control_effect_source=control_effect_source,
+                    override_applied=control_effect_source == "override",
                     implementation_level=implementation_level,
                     confidence_level=confidence_level,
                     confidence_source=confidence_source,
@@ -436,6 +464,35 @@ def _collect_contributions_for_technique(
         sorted(set(missing_data_flags)),
         sorted(set(unconfigured_flags)),
         sorted(set(partially_configured_flags)),
+    )
+
+
+def _resolve_tool_capability_behavior(
+    tool_capability: ToolCapability,
+    technique_id: int,
+) -> tuple[str, str, str, str]:
+    override = next(
+        (
+            item
+            for item in tool_capability.technique_overrides
+            if item.technique_id == technique_id
+        ),
+        None,
+    )
+    configured_effect_default = tool_capability.control_effect_default
+    if override is None:
+        return (
+            configured_effect_default,
+            configured_effect_default,
+            tool_capability.implementation_level,
+            "default",
+        )
+
+    return (
+        configured_effect_default,
+        override.control_effect_override,
+        override.implementation_level_override or tool_capability.implementation_level,
+        "override",
     )
 
 
@@ -623,6 +680,14 @@ def _strongest_effect(contributions: list[TechniqueContribution]) -> str:
         if COVERAGE_PRIORITY[contribution.control_effect] > COVERAGE_PRIORITY[strongest]:
             strongest = contribution.control_effect
     return strongest
+
+
+def _collect_available_effects(contributions: list[TechniqueContribution]) -> list[str]:
+    return [
+        effect
+        for effect in ("prevent", "block", "detect")
+        if any(contribution.control_effect == effect for contribution in contributions)
+    ]
 
 
 def _aggregate_confidence(contributions: list[TechniqueContribution]) -> str:

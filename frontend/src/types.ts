@@ -190,6 +190,17 @@ export interface ToolCapabilityScope {
   coverage_scope: CoverageScope;
 }
 
+export interface ToolCapabilityTechniqueOverride {
+  id: number;
+  tool_capability_id: number;
+  technique_id: number;
+  technique_code: string;
+  technique_name: string;
+  control_effect_override: ControlEffect;
+  implementation_level_override: Exclude<ImplementationLevel, "none"> | null;
+  notes: string;
+}
+
 export interface ScopeSummary {
   full_scopes: string[];
   partial_scopes: string[];
@@ -198,7 +209,8 @@ export interface ScopeSummary {
 
 export interface ToolCapability {
   capability_id: number;
-  control_effect: ControlEffect;
+  control_effect_default?: ControlEffect;
+  control_effect?: ControlEffect;
   implementation_level: ImplementationLevel;
   confidence_source: ConfidenceSource;
   confidence_level: ConfidenceLevel;
@@ -232,6 +244,7 @@ export interface ToolCapabilityDetail {
   configuration_questions: ConfigurationQuestion[];
   configuration_answers: ToolCapabilityConfigurationAnswer[];
   scopes: ToolCapabilityScope[];
+  technique_overrides?: ToolCapabilityTechniqueOverride[];
   relevant_scopes: TechniqueRelevantScope[];
 }
 
@@ -242,7 +255,8 @@ export interface CapabilityImplementingTool {
   tool_category: ToolCategory;
   tool_types: ToolType[];
   tool_type_labels?: string[];
-  control_effect: ControlEffect;
+  control_effect_default?: ControlEffect;
+  control_effect?: ControlEffect;
   implementation_level: ImplementationLevel;
   confidence_source: ConfidenceSource;
   confidence_level: ConfidenceLevel;
@@ -378,6 +392,11 @@ export interface TechniqueCoverage {
   technique_name: string;
   /** Direct link to the MITRE ATT&CK page for this technique. */
   attack_url: string;
+  available_effects?: CoverageType[];
+  best_effect?: CoverageType;
+  detection_count?: number;
+  blocking_count?: number;
+  prevention_count?: number;
   coverage_type: CoverageType;
   effective_control_effect: CoverageType;
   effective_outcome: EffectiveOutcome;
@@ -416,7 +435,9 @@ export interface CapabilityContribution {
   toolId: number;
   toolName: string;
   controlEffect: CoverageType;
-  configuredEffect: ControlEffect;
+  configuredEffectDefault?: ControlEffect;
+  controlEffectSource?: "default" | "override";
+  overrideApplied?: boolean;
   implementationLevel: ImplementationLevel;
   mappingCoverage: MappingCoverage;
   confidenceSource: ConfidenceSource;
@@ -438,6 +459,9 @@ export interface TechniqueCoverageContribution {
   capability_code: string;
   capability_name: string;
   control_effect: CoverageType;
+  configured_effect_default?: ControlEffect;
+  control_effect_source?: "default" | "override";
+  override_applied?: boolean;
   implementation_level: ImplementationLevel;
   confidence_level: ConfidenceLevel;
   confidence_source: ConfidenceSource;

@@ -61,6 +61,16 @@ interface ToolDetailPageProps {
     capabilityId: number,
     scopes: Array<{ coverage_scope_id: number; status: ScopeStatus; notes: string }>,
   ) => Promise<void>;
+  onSaveTechniqueOverrides: (
+    toolId: number,
+    capabilityId: number,
+    overrides: Array<{
+      technique_id: number;
+      control_effect_override: ControlEffect;
+      implementation_level_override: Exclude<ImplementationLevel, "none"> | null;
+      notes: string;
+    }>,
+  ) => Promise<void>;
   onSetToolDataSource: (
     toolId: number,
     dataSourceId: number,
@@ -96,6 +106,7 @@ export function ToolDetailPage({
   onSaveConfigurationProfile,
   onSaveConfigurationAnswers,
   onSaveCapabilityScopes,
+  onSaveTechniqueOverrides,
   onUpdateTags,
   onUpdateToolTypes,
 }: ToolDetailPageProps) {
@@ -108,6 +119,8 @@ export function ToolDetailPage({
   const [configurationNotes, setConfigurationNotes] = useState("");
   const [scopeDraft, setScopeDraft] = useState<Record<number, ScopeStatus>>({});
   const [scopeNotes, setScopeNotes] = useState<Record<number, string>>({});
+  const [techniqueOverrideDraft, setTechniqueOverrideDraft] = useState<Record<number, ControlEffect>>({});
+  const [showTechniqueOverrides, setShowTechniqueOverrides] = useState(false);
   const [tagDraft, setTagDraft] = useState<ToolTag[]>(tool?.tags ?? []);
   const [toolTypesDraft, setToolTypesDraft] = useState<ToolType[]>(tool?.tool_types ?? []);
   const [dataSourceNotes, setDataSourceNotes] = useState<Record<number, string>>({});
@@ -142,7 +155,8 @@ export function ToolDetailPage({
     }
 
     const assignment = tool.capabilities.find((item) => item.capability_id === expandedCapabilityId);
-    if (!assignment || assignment.control_effect === "none" || assignment.implementation_level === "none") {
+    const defaultEffect = assignment?.control_effect_default ?? assignment?.control_effect ?? "none";
+    if (!assignment || defaultEffect === "none" || assignment.implementation_level === "none") {
       setDetail(null);
       return;
     }
@@ -164,9 +178,23 @@ export function ToolDetailPage({
         setScopeNotes(
           Object.fromEntries((payload.scopes ?? []).map((scope) => [scope.coverage_scope_id, scope.notes])),
         );
+        setTechniqueOverrideDraft(
+          Object.fromEntries(
+            (payload.technique_overrides ?? []).map((override) => [
+              override.technique_id,
+              override.control_effect_override,
+            ]),
+          ),
+        );
       })
       .finally(() => setDetailLoading(false));
   }, [expandedCapabilityId, tool]);
+
+  useEffect(() => {
+    if (!detail) {
+      setShowTechniqueOverrides(false);
+    }
+  }, [detail]);
 
   const assignments = useMemo(
     () => new Map(tool?.capabilities.map((capability) => [capability.capability_id, capability]) ?? []),
@@ -179,6 +207,21 @@ export function ToolDetailPage({
   const responseActionAssignments = useMemo(
     () => new Map(tool?.response_actions.map((entry) => [entry.response_action_id, entry]) ?? []),
     [tool],
+  );
+  const relatedTechniques = useMemo(() => {
+    if (!detail?.capability.related_techniques) {
+      return [];
+    }
+
+    return Array.from(
+      new Map(
+        detail.capability.related_techniques.map((technique) => [technique.technique_id, technique]),
+      ).values(),
+    ).sort((left, right) => left.technique_code.localeCompare(right.technique_code));
+  }, [detail]);
+  const overrideByTechniqueId = useMemo(
+    () => new Map((detail?.technique_overrides ?? []).map((override) => [override.technique_id, override])),
+    [detail],
   );
 
   if (!tool) {
@@ -307,6 +350,37 @@ export function ToolDetailPage({
     );
     setScopeNotes(
       Object.fromEntries(refreshed.scopes.map((scope) => [scope.coverage_scope_id, scope.notes])),
+    );
+  }
+
+  async function submitTechniqueOverrides() {
+    if (!detail) {
+      return;
+    }
+
+    await onSaveTechniqueOverrides(
+      activeTool.id,
+      detail.capability.id,
+      relatedTechniques.map((technique) => ({
+        technique_id: technique.technique_id,
+        control_effect_override: techniqueOverrideDraft[technique.technique_id] ?? "none",
+        implementation_level_override: null,
+        notes:
+          (techniqueOverrideDraft[technique.technique_id] ?? "none") === "none"
+            ? ""
+            : (overrideByTechniqueId.get(technique.technique_id)?.notes ?? ""),
+      })),
+    );
+
+    const refreshed = await getToolCapabilityDetail(activeTool.id, detail.capability.id);
+    setDetail(refreshed);
+    setTechniqueOverrideDraft(
+      Object.fromEntries(
+        (refreshed.technique_overrides ?? []).map((override) => [
+          override.technique_id,
+          override.control_effect_override,
+        ]),
+      ),
     );
   }
 
@@ -579,7 +653,9 @@ export function ToolDetailPage({
       ) : null}
 
       {activeTool.capabilities.length > 0 &&
-      activeTool.capabilities.every((capability) => capability.control_effect === "detect") ? (
+      activeTool.capabilities.every(
+        (capability) => (capability.control_effect_default ?? capability.control_effect) === "detect",
+      ) ? (
         <Card title="Coverage hint" subtitle="Control posture">
           <p className="section-copy">
             This tool is only detecting threats right now, not blocking or preventing them.
@@ -595,7 +671,7 @@ export function ToolDetailPage({
         <div className="capability-list">
           {capabilities.map((capability) => {
             const assignment = assignments.get(capability.id);
-            const effect = assignment?.control_effect ?? "none";
+            const effect = assignment?.control_effect_default ?? assignment?.control_effect ?? "none";
             const level = assignment?.implementation_level ?? "none";
             const enabled = effect !== "none" && level !== "none";
             const isExpanded = expandedCapabilityId === capability.id;
@@ -632,8 +708,8 @@ export function ToolDetailPage({
                       <span className="muted">{capability.code}</span>
                       {assignment ? (
                         <>
-                          <span className={`coverage-pill ${assignment.control_effect}`}>
-                            {assignment.control_effect}
+                          <span className={`coverage-pill ${assignment.control_effect_default}`}>
+                            {assignment.control_effect_default}
                           </span>
                           <span className="count-chip">{assignment.implementation_level}</span>
                           <span className={`coverage-pill ${assignment.confidence_level}`}>
@@ -822,6 +898,81 @@ export function ToolDetailPage({
                               </div>
                             ))}
                           </div>
+                        </div>
+
+                        <div className="workspace-section">
+                          <div className="workspace-section-header">
+                            <div>
+                              <p className="eyebrow">ATT&CK Behavior</p>
+                              <strong className="workspace-title">Default effect with optional per-technique refinement</strong>
+                            </div>
+                            <div className="workspace-badges">
+                              <span className={`coverage-pill ${detail.assignment.control_effect_default}`}>
+                                {detail.assignment.control_effect_default}
+                              </span>
+                              <span className="count-chip">{relatedTechniques.length} techniques</span>
+                              <span className="count-chip">{(detail.technique_overrides ?? []).length} overrides</span>
+                              <button
+                                type="button"
+                                className="secondary-button"
+                                onClick={() => setShowTechniqueOverrides((current) => !current)}
+                              >
+                                {showTechniqueOverrides ? "Hide refinement" : "Refine per technique"}
+                              </button>
+                            </div>
+                          </div>
+                          <p className="muted">
+                            Techniques use the default effect unless an override is set for that ATT&CK row.
+                          </p>
+                          {showTechniqueOverrides ? (
+                            <>
+                              <div className="detail-list">
+                                {relatedTechniques.map((technique) => {
+                                  const override = overrideByTechniqueId.get(technique.technique_id);
+                                  return (
+                                    <div key={technique.technique_id} className="detail-item stacked">
+                                      <div className="detail-row">
+                                        <span>
+                                          {technique.technique_code} {technique.technique_name}
+                                        </span>
+                                        <div className="workspace-badges">
+                                          <span className={`coverage-pill ${detail.assignment.control_effect_default}`}>
+                                            {detail.assignment.control_effect_default}
+                                          </span>
+                                          {override ? <span className="count-chip">override</span> : null}
+                                        </div>
+                                      </div>
+                                      <div className="capability-controls">
+                                        <label className="implementation-control">
+                                          <span>Override</span>
+                                          <select
+                                            className="level-select"
+                                            value={techniqueOverrideDraft[technique.technique_id] ?? "none"}
+                                            onChange={(event) =>
+                                              setTechniqueOverrideDraft((current) => ({
+                                                ...current,
+                                                [technique.technique_id]: event.target.value as ControlEffect,
+                                              }))
+                                            }
+                                          >
+                                            <option value="none">Use default</option>
+                                            <option value="detect">Detect</option>
+                                            {activeTool.tool_types.includes("control") ? <option value="block">Block</option> : null}
+                                            {activeTool.tool_types.includes("control") ? <option value="prevent">Prevent</option> : null}
+                                          </select>
+                                        </label>
+                                      </div>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                              <div className="capability-action-group">
+                                <button type="button" className="primary-button" onClick={() => void submitTechniqueOverrides()}>
+                                  Save ATT&CK behavior
+                                </button>
+                              </div>
+                            </>
+                          ) : null}
                         </div>
 
                         {detail.capability.requires_configuration ? (
