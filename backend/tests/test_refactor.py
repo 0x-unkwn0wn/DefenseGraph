@@ -229,6 +229,23 @@ class DefenseGraphConfidenceTests(unittest.TestCase):
         self.assertEqual(assignment["confidence_level"], "low")
         self.assertEqual(assignment["control_effect_default"], "prevent")
 
+    def test_unmapped_technique_is_not_counted_as_gap(self):
+        with self.session_local() as db:
+            db.add(Technique(code="T9000", name="Unmapped Technique"))
+            db.commit()
+
+        row = self._coverage_row("T9000")
+
+        self.assertFalse(row["has_capability_mappings"])
+        self.assertEqual(row["mapped_capability_count"], 0)
+        self.assertEqual(row["coverage_status"], "unmapped")
+        self.assertFalse(row["is_gap_no_coverage"])
+        self.assertFalse(row["is_gap_scope_missing"])
+        self.assertEqual(
+            row["dependency_flags"],
+            ["No capability mappings defined for this technique"],
+        )
+
     def test_requires_configuration_without_profile_stays_low_and_unconfigured(self):
         tool = self._create_tool("Cloud Edge", "Other")
         capability = self._find_capability("CAP-031")

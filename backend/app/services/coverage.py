@@ -156,10 +156,12 @@ def _build_technique_coverage_row(technique: Technique, response_tools: list[Too
         unconfigured_flags,
         partially_configured_flags,
     ) = _collect_contributions_for_technique(technique)
+    mapped_capability_count = len({mapping.capability_id for mapping in technique.capability_maps})
+    has_capability_mappings = mapped_capability_count > 0
     scope_summary = _build_scope_summary(technique, contributions)
     available_effects = _collect_available_effects(contributions)
     direct_effect = _strongest_effect(contributions)
-    if _blocks_effective_coverage(technique, scope_summary):
+    if has_capability_mappings and _blocks_effective_coverage(technique, scope_summary):
         direct_effect = "none"
     effective_contributions = [
         contribution
@@ -179,10 +181,11 @@ def _build_technique_coverage_row(technique: Technique, response_tools: list[Too
         else direct_effect
     )
 
-    is_gap_no_coverage = direct_effect == "none"
-    is_gap_detect_only = direct_effect == "detect"
+    is_gap_no_coverage = has_capability_mappings and direct_effect == "none"
+    is_gap_detect_only = has_capability_mappings and direct_effect == "detect"
     is_gap_partial = (
-        direct_effect != "none"
+        has_capability_mappings
+        and direct_effect != "none"
         and bool(effective_contributions)
         and all(
             contribution.implementation_level == "partial"
@@ -190,28 +193,32 @@ def _build_technique_coverage_row(technique: Technique, response_tools: list[Too
             for contribution in effective_contributions
         )
     )
-    is_gap_low_confidence = direct_effect != "none" and confidence_level == "low"
-    is_gap_single_tool_dependency = direct_effect != "none" and tool_count == 1
-    is_gap_missing_data_sources = bool(missing_data_flags)
-    is_gap_detection_without_response = direct_effect == "detect" and not response_enabled
-    is_gap_response_without_detection = bool(response_actions) and direct_effect == "none"
-    is_gap_unconfigured_control = bool(unconfigured_flags)
-    is_gap_partially_configured_control = bool(partially_configured_flags)
-    is_gap_scope_missing = bool(scope_summary["missing_scopes"])
-    is_gap_scope_partial = bool(scope_summary["partial_scopes"])
+    is_gap_low_confidence = has_capability_mappings and direct_effect != "none" and confidence_level == "low"
+    is_gap_single_tool_dependency = has_capability_mappings and direct_effect != "none" and tool_count == 1
+    is_gap_missing_data_sources = has_capability_mappings and bool(missing_data_flags)
+    is_gap_detection_without_response = has_capability_mappings and direct_effect == "detect" and not response_enabled
+    is_gap_response_without_detection = has_capability_mappings and bool(response_actions) and direct_effect == "none"
+    is_gap_unconfigured_control = has_capability_mappings and bool(unconfigured_flags)
+    is_gap_partially_configured_control = has_capability_mappings and bool(partially_configured_flags)
+    is_gap_scope_missing = has_capability_mappings and bool(scope_summary["missing_scopes"])
+    is_gap_scope_partial = has_capability_mappings and bool(scope_summary["partial_scopes"])
     if direct_effect != "none" and (is_gap_scope_missing or is_gap_scope_partial):
         is_gap_partial = True
 
-    dependency_flags = [
-        *missing_data_flags,
-        *unconfigured_flags,
-        *partially_configured_flags,
-        *(["Missing scope coverage"] if is_gap_scope_missing else []),
-        *(["Partial scope coverage"] if is_gap_scope_partial else []),
-        *(["Response enabled"] if response_enabled else []),
-        *(["Detection without response"] if is_gap_detection_without_response else []),
-        *(["Response without upstream detection"] if is_gap_response_without_detection else []),
-    ]
+    dependency_flags = (
+        ["No capability mappings defined for this technique"]
+        if not has_capability_mappings
+        else [
+            *missing_data_flags,
+            *unconfigured_flags,
+            *partially_configured_flags,
+            *(["Missing scope coverage"] if is_gap_scope_missing else []),
+            *(["Partial scope coverage"] if is_gap_scope_partial else []),
+            *(["Response enabled"] if response_enabled else []),
+            *(["Detection without response"] if is_gap_detection_without_response else []),
+            *(["Response without upstream detection"] if is_gap_response_without_detection else []),
+        ]
+    )
 
     bas_validation_reads = _build_bas_validations(technique)
     bas_validated = any(v.bas_result != "not_tested" for v in bas_validation_reads)
@@ -230,6 +237,8 @@ def _build_technique_coverage_row(technique: Technique, response_tools: list[Too
         technique_code=technique.code,
         technique_name=technique.name,
         attack_url=f"https://attack.mitre.org/techniques/{technique.code.replace('.', '/')}/",
+        has_capability_mappings=has_capability_mappings,
+        mapped_capability_count=mapped_capability_count,
         available_effects=available_effects,
         best_effect=direct_effect,
         detection_count=detection_count,
@@ -241,6 +250,7 @@ def _build_technique_coverage_row(technique: Technique, response_tools: list[Too
         tool_count=tool_count,
         confidence_level=confidence_level,
         coverage_status=_build_coverage_status(
+            has_capability_mappings=has_capability_mappings,
             is_gap_no_coverage=is_gap_no_coverage,
             is_gap_detect_only=is_gap_detect_only,
             is_gap_partial=is_gap_partial,
@@ -709,11 +719,14 @@ def _build_bas_validations(technique: Technique) -> list[BASValidationRead]:
 
 def _build_coverage_status(
     *,
+    has_capability_mappings: bool,
     is_gap_no_coverage: bool,
     is_gap_detect_only: bool,
     is_gap_partial: bool,
     is_gap_low_confidence: bool,
 ) -> str:
+    if not has_capability_mappings:
+        return "unmapped"
     if is_gap_no_coverage:
         return "no_coverage"
     if is_gap_detect_only:

@@ -94,6 +94,105 @@ describe("CoveragePage", () => {
     expect(screen.getAllByText(/extended/i).length).toBeGreaterThan(0);
   });
 
+  it("treats unmapped techniques as out of model instead of critical gaps", async () => {
+    const user = userEvent.setup();
+
+    render(
+      <CoveragePage
+        capabilities={[]}
+        coverage={[
+          {
+            technique_id: 1,
+            technique_code: "T9000",
+            technique_name: "Unmapped Technique",
+            has_capability_mappings: false,
+            mapped_capability_count: 0,
+            coverage_type: "none",
+            effective_control_effect: "none",
+            effective_outcome: "none",
+            tool_count: 0,
+            confidence_level: "low",
+            coverage_status: "unmapped",
+            response_enabled: false,
+            response_actions: [],
+            dependency_flags: ["No capability mappings defined for this technique"],
+            contributing_tools: [],
+            relevant_scopes: [],
+            scope_summary: { full_scopes: [], partial_scopes: [], missing_scopes: [] },
+            is_gap_no_coverage: false,
+            is_gap_detect_only: false,
+            is_gap_partial: false,
+            is_gap_low_confidence: false,
+            is_gap_single_tool_dependency: false,
+            is_gap_missing_data_sources: false,
+            is_gap_detection_without_response: false,
+            is_gap_response_without_detection: false,
+            is_gap_unconfigured_control: false,
+            is_gap_partially_configured_control: false,
+            is_gap_scope_missing: false,
+            is_gap_scope_partial: false,
+            attack_url: "https://attack.mitre.org/techniques/T9000/",
+            bas_validations: [],
+            bas_validated: false,
+            bas_result: null,
+            last_bas_validation_date: null,
+          },
+          {
+            technique_id: 2,
+            technique_code: "T1133",
+            technique_name: "External Remote Services",
+            has_capability_mappings: true,
+            mapped_capability_count: 1,
+            coverage_type: "none",
+            effective_control_effect: "none",
+            effective_outcome: "none",
+            tool_count: 0,
+            confidence_level: "low",
+            coverage_status: "no_coverage",
+            response_enabled: false,
+            response_actions: [],
+            dependency_flags: [],
+            contributing_tools: [],
+            relevant_scopes: [],
+            scope_summary: { full_scopes: [], partial_scopes: [], missing_scopes: [] },
+            is_gap_no_coverage: true,
+            is_gap_detect_only: false,
+            is_gap_partial: false,
+            is_gap_low_confidence: false,
+            is_gap_single_tool_dependency: false,
+            is_gap_missing_data_sources: false,
+            is_gap_detection_without_response: false,
+            is_gap_response_without_detection: false,
+            is_gap_unconfigured_control: false,
+            is_gap_partially_configured_control: false,
+            is_gap_scope_missing: false,
+            is_gap_scope_partial: false,
+            attack_url: "https://attack.mitre.org/techniques/T1133/",
+            bas_validations: [],
+            bas_validated: false,
+            bas_result: null,
+            last_bas_validation_date: null,
+          },
+        ]}
+        tools={[]}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "gaps" }));
+
+    expect(screen.getByText("External Remote Services")).toBeInTheDocument();
+    expect(screen.queryByText("Unmapped Technique")).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "coverage" }));
+    await user.click(screen.getByLabelText(/show extended techniques/i));
+    await user.click(screen.getByRole("button", { name: /T9000/i }));
+
+    expect(screen.getByText("Unmapped")).toBeInTheDocument();
+    expect(
+      screen.getByText(/excluded from gap counts until the model is extended/i),
+    ).toBeInTheDocument();
+  });
+
   it("shows dependency and response indicators in the technique detail panel", async () => {
     const user = userEvent.setup();
 

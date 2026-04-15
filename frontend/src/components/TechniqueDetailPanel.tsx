@@ -18,6 +18,7 @@ export function TechniqueDetailPanel({ technique, onClose }: TechniqueDetailPane
     return null;
   }
 
+  const isUnmapped = technique.has_capability_mappings === false;
   const uniqueTools = Array.from(
     new Map(
       technique.contributions.map((contribution) => [
@@ -28,7 +29,9 @@ export function TechniqueDetailPanel({ technique, onClose }: TechniqueDetailPane
   );
 
   const coverageSummary =
-    technique.coverage_type === "prevent"
+    isUnmapped
+      ? "This technique has no capability mappings in the current DefenseGraph model."
+      : technique.coverage_type === "prevent"
       ? "At least one tool prevents this technique."
       : technique.coverage_type === "block"
         ? "At least one tool blocks this technique, but none prevent it."
@@ -73,6 +76,10 @@ export function TechniqueDetailPanel({ technique, onClose }: TechniqueDetailPane
         <div className="detail-kv">
           <span className="detail-label">Coverage</span>
           <span className={`coverage-pill ${technique.coverage_type}`}>{technique.coverage_type}</span>
+        </div>
+        <div className="detail-kv">
+          <span className="detail-label">Model status</span>
+          <strong>{isUnmapped ? "Unmapped" : `${technique.mapped_capability_count ?? 0} capability mappings`}</strong>
         </div>
         <div className="detail-kv">
           <span className="detail-label">Outcome</span>
@@ -134,7 +141,9 @@ export function TechniqueDetailPanel({ technique, onClose }: TechniqueDetailPane
         <span className="detail-label">Summary</span>
         <p className="muted">{coverageSummary}</p>
         <p className="muted">
-          {technique.is_gap_no_coverage
+          {isUnmapped
+            ? "Because no capability is mapped to this technique yet, it is excluded from gap counts until the model is extended."
+            : technique.is_gap_no_coverage
             ? "This technique is currently uncovered."
             : technique.is_gap_detect_only
               ? "Coverage is limited to detection and should be strengthened."
@@ -179,7 +188,9 @@ export function TechniqueDetailPanel({ technique, onClose }: TechniqueDetailPane
 
       <div className="detail-panel-section">
         <span className="detail-label">Tool contributions</span>
-        {uniqueTools.length === 0 ? (
+        {isUnmapped ? (
+          <p className="muted">No capability mappings exist yet, so no tool can contribute to this technique.</p>
+        ) : uniqueTools.length === 0 ? (
           <p className="muted">No tools currently cover this technique.</p>
         ) : (
           <div className="detail-list">
@@ -227,7 +238,9 @@ export function TechniqueDetailPanel({ technique, onClose }: TechniqueDetailPane
 
       <div className="detail-panel-section">
         <span className="detail-label">Capabilities</span>
-        {technique.contributions.length === 0 ? (
+        {isUnmapped ? (
+          <p className="muted">No capability mappings are defined for this technique yet.</p>
+        ) : technique.contributions.length === 0 ? (
           <p className="muted">No capability mappings are currently contributing.</p>
         ) : (
           <div className="detail-list">

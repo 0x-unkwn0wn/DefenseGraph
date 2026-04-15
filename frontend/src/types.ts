@@ -6,7 +6,7 @@ export type ConfidenceSource = "declared" | "assessed" | "evidenced" | "tested";
 export type ConfidenceLevel = "low" | "medium" | "high";
 export type AssessmentAnswerValue = "yes" | "no" | "partial" | "unknown";
 export type ConfigurationAnswerValue = "yes" | "no" | "partial" | "unknown";
-export type CoverageStatus = "no_coverage" | "detect_only" | "partial" | "low_confidence" | "covered";
+export type CoverageStatus = "unmapped" | "no_coverage" | "detect_only" | "partial" | "low_confidence" | "covered";
 export type EffectiveOutcome = "none" | "detect" | "detect_with_response" | "block" | "prevent";
 export type ToolCategory =
   | "Endpoint Security (EDR / XDR)"
@@ -407,6 +407,8 @@ export interface TechniqueCoverage {
   technique_name: string;
   /** Direct link to the MITRE ATT&CK page for this technique. */
   attack_url: string;
+  has_capability_mappings?: boolean;
+  mapped_capability_count?: number;
   available_effects?: CoverageType[];
   best_effect?: CoverageType;
   detection_count?: number;

@@ -113,6 +113,7 @@ export function ToolDetailPage({
   const tool = tools.find((entry) => entry.id === toolId);
   const [expandedCapabilityId, setExpandedCapabilityId] = useState<number | null>(null);
   const [detail, setDetail] = useState<ToolCapabilityDetail | null>(null);
+  const [detailError, setDetailError] = useState<string | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
   const [assessmentDraft, setAssessmentDraft] = useState<Record<number, AssessmentAnswerValue>>({});
   const [configurationDraft, setConfigurationDraft] = useState<Record<number, ConfigurationAnswerValue>>({});
@@ -151,6 +152,8 @@ export function ToolDetailPage({
   useEffect(() => {
     if (!tool || expandedCapabilityId === null) {
       setDetail(null);
+      setDetailError(null);
+      setDetailLoading(false);
       return;
     }
 
@@ -158,12 +161,21 @@ export function ToolDetailPage({
     const defaultEffect = assignment?.control_effect_default ?? assignment?.control_effect ?? "none";
     if (!assignment || defaultEffect === "none" || assignment.implementation_level === "none") {
       setDetail(null);
+      setDetailError(null);
+      setDetailLoading(false);
       return;
     }
 
+    let cancelled = false;
+    setDetail(null);
+    setDetailError(null);
     setDetailLoading(true);
     void getToolCapabilityDetail(tool.id, expandedCapabilityId)
       .then((payload) => {
+        if (cancelled) {
+          return;
+        }
+
         setDetail(payload);
         setAssessmentDraft(
           Object.fromEntries((payload.assessment_answers ?? []).map((answer) => [answer.question_id, answer.answer])),
@@ -187,7 +199,23 @@ export function ToolDetailPage({
           ),
         );
       })
-      .finally(() => setDetailLoading(false));
+      .catch((error) => {
+        if (cancelled) {
+          return;
+        }
+
+        setDetail(null);
+        setDetailError(error instanceof Error ? error.message : "Failed to load capability workspace.");
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setDetailLoading(false);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
   }, [expandedCapabilityId, tool]);
 
   useEffect(() => {
@@ -785,17 +813,15 @@ export function ToolDetailPage({
                       type="button"
                       className="secondary-button"
                       disabled={!enabled}
+                      aria-expanded={isExpanded}
+                      aria-controls={`capability-workspace-${capability.id}`}
                       onClick={() =>
                         setExpandedCapabilityId((current) =>
                           current === capability.id ? null : capability.id,
                         )
                       }
                     >
-                      {isExpanded
-                        ? "Close workspace"
-                        : capability.requires_configuration
-                          ? "Verify configuration"
-                          : "Open workspace"}
+                      {isExpanded ? "Close workspace" : "Open workspace"}
                     </button>
                     <a href={`#/capabilities/${capability.id}`} className="secondary-link">
                       View capability
@@ -804,10 +830,40 @@ export function ToolDetailPage({
                 </div>
 
                 {isExpanded ? (
-                  <div className="capability-detail-workspace">
+                  <div
+                    id={`capability-workspace-${capability.id}`}
+                    className="capability-detail-workspace"
+                    role="region"
+                    aria-labelledby={`capability-workspace-title-${capability.id}`}
+                  >
+                    <div className="workspace-banner">
+                      <div>
+                        <p className="eyebrow">
+                          {capability.requires_configuration
+                            ? "Configuration verification workspace"
+                            : "Capability workspace"}
+                        </p>
+                        <strong
+                          id={`capability-workspace-title-${capability.id}`}
+                          className="workspace-banner-title"
+                        >
+                          {capability.name}
+                        </strong>
+                      </div>
+                      <div className="workspace-badges">
+                        <span className="count-chip">{effect}</span>
+                        <span className="count-chip">{level}</span>
+                        {capability.requires_configuration ? <span className="count-chip">config required</span> : null}
+                      </div>
+                    </div>
                     {detailLoading ? (
                       <div className="empty-state compact">
-                        <p>Loading assessment and evidence...</p>
+                        <p>Loading workspace...</p>
+                      </div>
+                    ) : detailError ? (
+                      <div className="empty-state compact workspace-error">
+                        <p>Could not open this workspace.</p>
+                        <p className="muted">{detailError}</p>
                       </div>
                     ) : detail ? (
                       <>

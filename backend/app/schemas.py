@@ -12,7 +12,7 @@ ConfidenceSource = Literal["declared", "assessed", "evidenced", "tested"]
 ConfidenceLevel = Literal["low", "medium", "high"]
 AssessmentAnswerValue = Literal["yes", "no", "partial", "unknown"]
 ConfigurationAnswerValue = Literal["yes", "no", "partial", "unknown"]
-CoverageStatus = Literal["no_coverage", "detect_only", "partial", "low_confidence", "covered"]
+CoverageStatus = Literal["unmapped", "no_coverage", "detect_only", "partial", "low_confidence", "covered"]
 
 # Active security control categories (prevention, detection, or response tools).
 # "BAS" is intentionally excluded from this list — BAS tools are cross-functional
@@ -629,6 +629,8 @@ class TechniqueCoverageRead(BaseModel):
     technique_name: str
     # Direct link to the MITRE ATT&CK page for this technique.
     attack_url: str
+    has_capability_mappings: bool = True
+    mapped_capability_count: int = 0
     available_effects: list[CoverageType]
     best_effect: CoverageType
     detection_count: int

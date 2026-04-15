@@ -42,9 +42,10 @@ export function buildTechniqueStates({
       const tactic = techniqueTactics[row.technique_code] ?? "Execution";
       const displayGroup = techniqueDisplayGroups[row.technique_code] ?? "extended";
       const allContributions = mapCoverageContributions(row);
+      const hasCapabilityMappings = row.has_capability_mappings ?? true;
       const localCoverage =
         selectedToolId === "all"
-          ? summarizeCoverage(allContributions, row.response_actions, row.relevant_scopes)
+          ? summarizeCoverage(allContributions, row.response_actions, row.relevant_scopes, hasCapabilityMappings)
           : summarizeCoverageForSelectedTool(row, selectedToolId);
 
       return {
@@ -55,6 +56,8 @@ export function buildTechniqueStates({
         technique_name: row.technique_name,
         // Preserve API-sourced fields that localCoverage would overwrite with defaults.
         attack_url: row.attack_url,
+        has_capability_mappings: hasCapabilityMappings,
+        mapped_capability_count: row.mapped_capability_count ?? 0,
         bas_validations: row.bas_validations,
         bas_validated: row.bas_validated,
         bas_result: row.bas_result,
@@ -82,7 +85,12 @@ function summarizeCoverageForSelectedTool(
   );
   const responseActions = row.response_actions.filter((action) => action.tool_id === selectedToolId);
 
-  return summarizeCoverage(contributions, responseActions, row.relevant_scopes);
+  return summarizeCoverage(
+    contributions,
+    responseActions,
+    row.relevant_scopes,
+    row.has_capability_mappings ?? true,
+  );
 }
 
 function mapCoverageContributions(row: TechniqueCoverage): CapabilityContribution[] {
@@ -140,6 +148,7 @@ export function summarizeCoverage(
   contributions: CapabilityContribution[],
   responseActions: TechniqueResponseAction[] = [],
   relevantScopes: TechniqueCoverage["relevant_scopes"] = [],
+  hasCapabilityMappings: boolean = true,
 ): TechniqueCoverage & { contributions: CapabilityContribution[] } {
   const effectiveControlEffect = strongestEffect(contributions);
   const effectiveContributions = contributions.filter(
@@ -156,6 +165,7 @@ export function summarizeCoverage(
     effectiveControlEffect === "detect" && responseEnabled ? "detect_with_response" : effectiveControlEffect;
   const dependencyFlags = Array.from(
     new Set([
+      ...(hasCapabilityMappings ? [] : ["No capability mappings defined for this technique"]),
       ...effectiveContributions.flatMap((contribution) => contribution.dependencyWarnings),
       ...(responseEnabled ? ["Response enabled"] : []),
       ...(effectiveControlEffect === "detect" && !responseEnabled ? ["Detection without response"] : []),
@@ -165,35 +175,40 @@ export function summarizeCoverage(
     ]),
   );
 
-  const isGapNoCoverage = effectiveControlEffect === "none";
-  const isGapDetectOnly = effectiveControlEffect === "detect";
+  const isGapNoCoverage = hasCapabilityMappings && effectiveControlEffect === "none";
+  const isGapDetectOnly = hasCapabilityMappings && effectiveControlEffect === "detect";
   const isGapPartial =
+    hasCapabilityMappings &&
     effectiveControlEffect !== "none" &&
     effectiveContributions.length > 0 &&
     effectiveContributions.every(
       (contribution) =>
         contribution.implementationLevel === "partial" || contribution.mappingCoverage === "partial",
     );
-  const isGapLowConfidence = effectiveControlEffect !== "none" && confidenceLevel === "low";
-  const isGapSingleToolDependency = effectiveControlEffect !== "none" && toolIds.size === 1;
-  const isGapMissingDataSources = dependencyFlags.some((flag) => flag.toLowerCase().includes("missing"));
-  const isGapDetectionWithoutResponse = effectiveControlEffect === "detect" && !responseEnabled;
-  const isGapResponseWithoutDetection = effectiveControlEffect === "none" && responseActions.length > 0;
-  const isGapUnconfiguredControl = dependencyFlags.some((flag) => flag.toLowerCase().includes("unconfigured"));
-  const isGapPartiallyConfiguredControl = dependencyFlags.some((flag) =>
-    flag.toLowerCase().includes("partially enabled"),
-  );
+  const isGapLowConfidence = hasCapabilityMappings && effectiveControlEffect !== "none" && confidenceLevel === "low";
+  const isGapSingleToolDependency = hasCapabilityMappings && effectiveControlEffect !== "none" && toolIds.size === 1;
+  const isGapMissingDataSources =
+    hasCapabilityMappings && dependencyFlags.some((flag) => flag.toLowerCase().includes("missing"));
+  const isGapDetectionWithoutResponse = hasCapabilityMappings && effectiveControlEffect === "detect" && !responseEnabled;
+  const isGapResponseWithoutDetection =
+    hasCapabilityMappings && effectiveControlEffect === "none" && responseActions.length > 0;
+  const isGapUnconfiguredControl =
+    hasCapabilityMappings && dependencyFlags.some((flag) => flag.toLowerCase().includes("unconfigured"));
+  const isGapPartiallyConfiguredControl =
+    hasCapabilityMappings && dependencyFlags.some((flag) => flag.toLowerCase().includes("partially enabled"));
   const scopeSummary = summarizeScopes(relevantScopes, contributions);
-  const isGapScopeMissing = scopeSummary.missing_scopes.length > 0;
-  const isGapScopePartial = scopeSummary.partial_scopes.length > 0;
+  const isGapScopeMissing = hasCapabilityMappings && scopeSummary.missing_scopes.length > 0;
+  const isGapScopePartial = hasCapabilityMappings && scopeSummary.partial_scopes.length > 0;
   const finalIsGapPartial =
-    isGapPartial || ((effectiveControlEffect !== "none") && (isGapScopeMissing || isGapScopePartial));
+    isGapPartial || (hasCapabilityMappings && effectiveControlEffect !== "none" && (isGapScopeMissing || isGapScopePartial));
 
   return {
     technique_id: 0,
     technique_code: "",
     technique_name: "",
     attack_url: "",
+    has_capability_mappings: hasCapabilityMappings,
+    mapped_capability_count: 0,
     bas_validations: [],
     bas_validated: false,
     bas_result: null,
@@ -211,6 +226,7 @@ export function summarizeCoverage(
     tool_count: toolIds.size,
     confidence_level: confidenceLevel,
     coverage_status: buildCoverageStatus({
+      hasCapabilityMappings,
       isGapNoCoverage,
       isGapDetectOnly,
       isGapPartial,
@@ -321,11 +337,15 @@ function strongestEffect(contributions: CapabilityContribution[]) {
 }
 
 function buildCoverageStatus(flags: {
+  hasCapabilityMappings: boolean;
   isGapNoCoverage: boolean;
   isGapDetectOnly: boolean;
   isGapPartial: boolean;
   isGapLowConfidence: boolean;
 }): CoverageStatus {
+  if (!flags.hasCapabilityMappings) {
+    return "unmapped";
+  }
   if (flags.isGapNoCoverage) {
     return "no_coverage";
   }

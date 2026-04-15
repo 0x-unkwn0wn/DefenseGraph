@@ -1,7 +1,8 @@
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import { getToolCapabilityDetail } from "../api";
 import { ToolDetailPage } from "./ToolDetailPage";
 
 vi.mock("../api", () => ({
@@ -141,6 +142,10 @@ vi.mock("../api", () => ({
 }));
 
 describe("ToolDetailPage", () => {
+  beforeEach(() => {
+    vi.mocked(getToolCapabilityDetail).mockClear();
+  });
+
   it("shows confidence and opens the assessment workspace", async () => {
     const user = userEvent.setup();
 
@@ -209,7 +214,7 @@ describe("ToolDetailPage", () => {
 
     expect(screen.getByText("declared / low")).toBeInTheDocument();
 
-    await user.click(screen.getByRole("button", { name: /verify configuration/i }));
+    await user.click(screen.getByRole("button", { name: /open workspace/i }));
 
     await waitFor(() => {
       expect(screen.getByText(/guided questionnaire/i)).toBeInTheDocument();
@@ -277,7 +282,7 @@ describe("ToolDetailPage", () => {
       />,
     );
 
-    await user.click(screen.getByRole("button", { name: /verify configuration/i }));
+    await user.click(screen.getByRole("button", { name: /open workspace/i }));
     await waitFor(() => {
       expect(screen.getByText(/ATT&CK Behavior/i)).toBeInTheDocument();
     });
@@ -418,5 +423,73 @@ describe("ToolDetailPage", () => {
 
     expect(screen.getByText("Response Actions")).toBeInTheDocument();
     expect(screen.getAllByText("Disable Account").length).toBeGreaterThan(0);
+  });
+
+  it("shows a visible error when the workspace detail fails to load", async () => {
+    vi.mocked(getToolCapabilityDetail).mockRejectedValueOnce(new Error("API unavailable"));
+    const user = userEvent.setup();
+
+    render(
+      <ToolDetailPage
+        toolId={1}
+        tools={[
+          {
+            id: 1,
+            name: "Mail Gateway",
+            category: "Email",
+            tool_types: ["control"],
+            tags: ["Email Security"],
+            capabilities: [
+              {
+                capability_id: 4,
+                control_effect_default: "prevent",
+                implementation_level: "full",
+                confidence_source: "declared",
+                confidence_level: "low",
+                scopes: [],
+              },
+            ],
+            data_sources: [],
+            response_actions: [],
+          },
+        ]}
+        capabilities={[
+          {
+            id: 4,
+            code: "CAP-004",
+            name: "Email Phishing Protection",
+            domain: "email",
+            description: "Protects inbound mail flows.",
+            requires_data_sources: false,
+            supported_by_analytics: false,
+            supported_by_response: false,
+            requires_configuration: true,
+            configuration_profile_type: "phishing_email",
+          },
+        ]}
+        dataSources={[]}
+        coverageScopes={[]}
+        responseActions={[]}
+        onDeleteTool={vi.fn()}
+        onSetCapability={vi.fn()}
+        onSetToolDataSource={vi.fn()}
+        onSetToolResponseAction={vi.fn()}
+        onSaveAssessment={vi.fn()}
+        onAddEvidence={vi.fn()}
+        onSaveConfigurationProfile={vi.fn()}
+        onSaveConfigurationAnswers={vi.fn()}
+        onSaveCapabilityScopes={vi.fn()}
+        onSaveTechniqueOverrides={vi.fn()}
+        onUpdateTags={vi.fn()}
+        onUpdateToolTypes={vi.fn()}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: /open workspace/i }));
+
+    await waitFor(() => {
+      expect(screen.getByText("Could not open this workspace.")).toBeInTheDocument();
+    });
+    expect(screen.getByText("API unavailable")).toBeInTheDocument();
   });
 });

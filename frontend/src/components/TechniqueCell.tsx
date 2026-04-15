@@ -7,6 +7,7 @@ interface TechniqueCellProps {
 }
 
 export function TechniqueCell({ technique, isActive, onSelect }: TechniqueCellProps) {
+  const isUnmapped = technique.has_capability_mappings === false;
   const gapClass =
     technique.is_gap_no_coverage
       ? "gap-critical"
@@ -26,6 +27,7 @@ export function TechniqueCell({ technique, isActive, onSelect }: TechniqueCellPr
         technique.is_gap_single_tool_dependency ? "single-tool" : "",
         technique.is_gap_unconfigured_control ? "unconfigured-control" : "",
         technique.is_gap_partially_configured_control ? "partially-configured-control" : "",
+        isUnmapped ? "unmapped-model" : "",
         gapClass,
         isActive ? "active" : "",
       ]
@@ -43,6 +45,7 @@ export function TechniqueCell({ technique, isActive, onSelect }: TechniqueCellPr
         {technique.tool_count} {technique.tool_count === 1 ? "tool" : "tools"}
       </span>
       <span className="matrix-cell-flags">
+        {isUnmapped ? <span className="cell-flag">unmapped</span> : null}
         {technique.is_gap_partial ? <span className="cell-flag">partial</span> : null}
         {technique.is_gap_missing_data_sources ? <span className="cell-flag">data</span> : null}
         {technique.is_gap_unconfigured_control ? <span className="cell-flag">config</span> : null}

@@ -1090,6 +1090,11 @@ button {
   border-color: var(--border-strong);
 }
 
+.matrix-cell.unmapped-model {
+  border-style: dashed;
+  border-color: #586474;
+}
+
 .matrix-cell.gap-critical {
   border-color: var(--critical);
 }
@@ -1329,8 +1334,34 @@ button {
   display: flex;
   flex-direction: column;
   gap: 12px;
+  margin-top: 8px;
   padding-top: 12px;
   border-top: 1px solid var(--border);
+  border-left: 3px solid rgba(137, 180, 255, 0.45);
+  padding-left: 12px;
+  background: linear-gradient(180deg, rgba(137, 180, 255, 0.08), rgba(137, 180, 255, 0.02));
+}
+
+.workspace-banner {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+  border: 1px solid rgba(137, 180, 255, 0.22);
+  background: rgba(137, 180, 255, 0.08);
+}
+
+.workspace-banner-title {
+  display: block;
+  font-size: 0.92rem;
+  font-weight: 600;
+  color: #ffffff;
+}
+
+.workspace-error {
+  border-color: rgba(255, 130, 130, 0.28);
+  background: rgba(120, 22, 22, 0.16);
 }
 
 .workspace-section {
@@ -1759,6 +1790,10 @@ button {
   .detail-kv {
     flex-direction: column;
     align-items: flex-start;
+  }
+
+  .workspace-banner {
+    flex-direction: column;
   }
 
   .assessment-question,

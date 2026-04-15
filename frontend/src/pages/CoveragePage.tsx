@@ -462,6 +462,10 @@ export function CoveragePage({
               <span>No coverage</span>
             </div>
             <div className="legend-item">
+              <span className="legend-flag">UM</span>
+              <span>Unmapped technique</span>
+            </div>
+            <div className="legend-item">
               <span className="legend-swatch detect" />
               <span>{activeView === "coverage" ? "Detect" : "Detect only"}</span>
             </div>
