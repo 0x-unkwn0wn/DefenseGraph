@@ -267,6 +267,17 @@ button {
   align-items: start;
 }
 
+.docs-page-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.docs-view-group {
+  align-self: flex-start;
+  margin-bottom: 4px;
+}
+
 .docs-sidebar-nav {
   position: sticky;
   top: 16px;

@@ -24,8 +24,8 @@ const links = [
   {
     href: "#/docs",
     key: "docs",
-    label: "Documentation",
-    hint: "Dynamic system reference",
+    label: "Status & Docs",
+    hint: "Workspace status and reference",
     icon: "docs",
   },
 ] as const;

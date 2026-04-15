@@ -89,13 +89,13 @@ vi.mock("../api", () => ({
 }));
 
 describe("DocsPage", () => {
-  it("renders dynamic documentation sections from backend data", async () => {
+  it("splits live status from documentation content", async () => {
     const user = userEvent.setup();
 
     render(<DocsPage />);
 
     await waitFor(() => {
-      expect(screen.getByText("How DefenseGraph models coverage")).toBeInTheDocument();
+      expect(screen.getByText("Current workspace state")).toBeInTheDocument();
     });
 
     expect(screen.getByText("QRadar")).toBeInTheDocument();
@@ -104,5 +104,12 @@ describe("DocsPage", () => {
 
     await user.click(screen.getByRole("button", { name: "Capabilities" }));
     await user.click(screen.getAllByRole("button", { name: "Collapse" })[0]);
+
+    await user.click(screen.getByRole("tab", { name: "Documentation" }));
+
+    expect(screen.getByText("How DefenseGraph models coverage")).toBeInTheDocument();
+    expect(
+      screen.getByText(/Coverage and gaps are computed from current assignments, confidence, scope, and dependencies/i),
+    ).toBeInTheDocument();
   });
 });

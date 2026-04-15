@@ -434,8 +434,8 @@ export default function App() {
         };
       case "docs":
         return {
-          title: "Documentation",
-          description: "Dynamic in-app reference generated from current tool, capability, and mapping data.",
+          title: "Status & Docs",
+          description: "Current workspace status plus in-app documentation for the DefenseGraph model.",
         };
     }
   })();
