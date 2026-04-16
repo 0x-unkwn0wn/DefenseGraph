@@ -60,6 +60,10 @@ function parseRoute(hash: string): Route {
     return { page: "dashboard" };
   }
 
+  if (hash === "#/tools") {
+    return { page: "tools" };
+  }
+
   const toolMatch = hash.match(/^#\/tools\/(\d+)$/);
   if (toolMatch) {
     return { page: "tool-detail", toolId: Number(toolMatch[1]) };
