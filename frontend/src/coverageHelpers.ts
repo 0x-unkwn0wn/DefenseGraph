@@ -58,10 +58,28 @@ export function buildTechniqueStates({
         attack_url: row.attack_url,
         has_capability_mappings: hasCapabilityMappings,
         mapped_capability_count: row.mapped_capability_count ?? 0,
+        theoretical_effect: localCoverage.theoretical_effect,
+        real_effect: localCoverage.real_effect,
+        confidence_source_summary: localCoverage.confidence_source_summary,
+        mapped_domains: row.mapped_domains ?? [],
+        test_results: row.test_results ?? [],
+        test_status: row.test_status ?? "not_tested",
+        test_status_summary:
+          row.test_status_summary ??
+          {
+            not_tested: 1,
+            passed: 0,
+            partial: 0,
+            failed: 0,
+            detected_not_blocked: 0,
+          },
         bas_validations: row.bas_validations,
         bas_validated: row.bas_validated,
         bas_result: row.bas_result,
         last_bas_validation_date: row.last_bas_validation_date,
+        is_gap_tested_failed: row.is_gap_tested_failed ?? false,
+        is_gap_detected_not_blocked: row.is_gap_detected_not_blocked ?? false,
+        is_gap_untested_critical: row.is_gap_untested_critical ?? false,
         tactic,
         display_group: displayGroup,
         contributions: localCoverage.contributions,
@@ -98,11 +116,14 @@ function mapCoverageContributions(row: TechniqueCoverage): CapabilityContributio
     capabilityId: contribution.capability_id,
     capabilityCode: contribution.capability_code,
     capabilityName: contribution.capability_name,
+    capabilityDomain: contribution.capability_domain ?? contribution.capability_name,
     toolId: contribution.tool_id,
     toolName: contribution.tool_name,
     toolCategory: contribution.tool_category,
     toolTypes: contribution.tool_types,
     controlEffect: contribution.control_effect,
+    theoreticalEffect: contribution.theoretical_effect ?? contribution.control_effect,
+    realEffect: contribution.real_effect ?? contribution.control_effect,
     configuredEffectDefault: contribution.configured_effect_default ?? contribution.control_effect,
     controlEffectSource: contribution.control_effect_source ?? "default",
     overrideApplied: contribution.override_applied ?? false,
@@ -151,15 +172,25 @@ export function summarizeCoverage(
   hasCapabilityMappings: boolean = true,
 ): TechniqueCoverage & { contributions: CapabilityContribution[] } {
   const effectiveControlEffect = strongestEffect(contributions);
+  const theoreticalEffect = strongestTheoreticalEffect(contributions);
   const effectiveContributions = contributions.filter(
     (contribution) => contribution.controlEffect === effectiveControlEffect,
   );
-  const toolIds = new Set(contributions.map((contribution) => contribution.toolId));
-  const confidenceLevel = effectiveContributions.length
-    ? effectiveContributions
+  const theoreticalContributions = contributions.filter(
+    (contribution) => contribution.theoreticalEffect === theoreticalEffect,
+  );
+  const toolIds = new Set(
+    contributions.filter((contribution) => contribution.controlEffect !== "none").map((contribution) => contribution.toolId),
+  );
+  const confidenceBasis = effectiveContributions.length ? effectiveContributions : theoreticalContributions;
+  const confidenceLevel = confidenceBasis.length
+    ? confidenceBasis
         .sort((left, right) => confidenceRank[right.confidenceLevel] - confidenceRank[left.confidenceLevel])[0]
         .confidenceLevel
     : "low";
+  const confidenceSourceSummary = Array.from(
+    new Set(confidenceBasis.map((contribution) => contribution.confidenceSource)),
+  );
   const responseEnabled = responseActions.length > 0 && effectiveControlEffect !== "none";
   const effectiveOutcome =
     effectiveControlEffect === "detect" && responseEnabled ? "detect_with_response" : effectiveControlEffect;
@@ -209,10 +240,23 @@ export function summarizeCoverage(
     attack_url: "",
     has_capability_mappings: hasCapabilityMappings,
     mapped_capability_count: 0,
+    theoretical_effect: theoreticalEffect,
+    real_effect: effectiveControlEffect,
     bas_validations: [],
     bas_validated: false,
     bas_result: null,
     last_bas_validation_date: null,
+    confidence_source_summary: confidenceSourceSummary,
+    mapped_domains: [],
+    test_results: [],
+    test_status: "not_tested",
+    test_status_summary: {
+      not_tested: 1,
+      passed: 0,
+      partial: 0,
+      failed: 0,
+      detected_not_blocked: 0,
+    },
     available_effects: (["prevent", "block", "detect"] as const).filter((effect) =>
       contributions.some((contribution) => contribution.controlEffect === effect),
     ),
@@ -250,6 +294,9 @@ export function summarizeCoverage(
     is_gap_partially_configured_control: isGapPartiallyConfiguredControl,
     is_gap_scope_missing: isGapScopeMissing,
     is_gap_scope_partial: isGapScopePartial,
+    is_gap_tested_failed: false,
+    is_gap_detected_not_blocked: false,
+    is_gap_untested_critical: false,
     contributions,
   };
 }
@@ -267,7 +314,10 @@ export function isGap(technique: DerivedTechnique) {
     technique.is_gap_unconfigured_control ||
     technique.is_gap_partially_configured_control ||
     technique.is_gap_scope_missing ||
-    technique.is_gap_scope_partial
+    technique.is_gap_scope_partial ||
+    technique.is_gap_tested_failed ||
+    technique.is_gap_detected_not_blocked ||
+    technique.is_gap_untested_critical
   );
 }
 
@@ -330,6 +380,19 @@ function strongestEffect(contributions: CapabilityContribution[]) {
   for (const contribution of contributions) {
     if (coverageRank[contribution.controlEffect] > coverageRank[coverageType]) {
       coverageType = contribution.controlEffect;
+    }
+  }
+
+  return coverageType;
+}
+
+function strongestTheoreticalEffect(contributions: CapabilityContribution[]) {
+  let coverageType: CoverageType = "none";
+
+  for (const contribution of contributions) {
+    const nextEffect = contribution.theoreticalEffect ?? contribution.controlEffect;
+    if (coverageRank[nextEffect] > coverageRank[coverageType]) {
+      coverageType = nextEffect;
     }
   }
 

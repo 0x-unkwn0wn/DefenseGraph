@@ -2,11 +2,12 @@ export type ImplementationLevel = "none" | "partial" | "full";
 export type CoverageType = "none" | "detect" | "block" | "prevent";
 export type MappingCoverage = "full" | "partial";
 export type ControlEffect = "none" | "detect" | "block" | "prevent";
-export type ConfidenceSource = "declared" | "assessed" | "evidenced" | "tested";
+export type ConfidenceSource = "declared" | "assessed" | "evidenced" | "validated" | "tested";
 export type ConfidenceLevel = "low" | "medium" | "high";
 export type AssessmentAnswerValue = "yes" | "no" | "partial" | "unknown";
 export type ConfigurationAnswerValue = "yes" | "no" | "partial" | "unknown";
 export type CoverageStatus = "unmapped" | "no_coverage" | "detect_only" | "partial" | "low_confidence" | "covered";
+export type TestStatus = "not_tested" | "passed" | "partial" | "failed" | "detected_not_blocked";
 export type EffectiveOutcome = "none" | "detect" | "detect_with_response" | "block" | "prevent";
 export type ToolCategory =
   | "Endpoint Security (EDR / XDR)"
@@ -383,7 +384,18 @@ export interface BASValidation {
   bas_tool_id: number | null;
   bas_tool_name: string | null;
   bas_result: BASResult;
+  test_status?: TestStatus;
   last_validation_date: string | null;
+  notes: string;
+}
+
+export interface TechniqueTestResult {
+  id: number;
+  technique_id: number;
+  linked_tool_id: number | null;
+  linked_tool_name: string | null;
+  test_status: TestStatus;
+  last_tested_at: string | null;
   notes: string;
 }
 
@@ -409,6 +421,8 @@ export interface TechniqueCoverage {
   attack_url: string;
   has_capability_mappings?: boolean;
   mapped_capability_count?: number;
+  theoretical_effect?: CoverageType;
+  real_effect?: CoverageType;
   available_effects?: CoverageType[];
   best_effect?: CoverageType;
   detection_count?: number;
@@ -419,13 +433,18 @@ export interface TechniqueCoverage {
   effective_outcome: EffectiveOutcome;
   tool_count: number;
   confidence_level: ConfidenceLevel;
+  confidence_source_summary?: ConfidenceSource[];
   coverage_status: CoverageStatus;
+  mapped_domains?: string[];
   response_enabled: boolean;
   response_actions: TechniqueResponseAction[];
   dependency_flags: string[];
   contributing_tools: TechniqueCoverageContribution[];
   relevant_scopes: TechniqueRelevantScope[];
   scope_summary: ScopeSummary;
+  test_results?: TechniqueTestResult[];
+  test_status?: TestStatus;
+  test_status_summary?: Record<TestStatus, number>;
   /** BAS validated fields — separate from active coverage. */
   bas_validations: BASValidation[];
   bas_validated: boolean;
@@ -443,15 +462,21 @@ export interface TechniqueCoverage {
   is_gap_partially_configured_control: boolean;
   is_gap_scope_missing: boolean;
   is_gap_scope_partial: boolean;
+  is_gap_tested_failed?: boolean;
+  is_gap_detected_not_blocked?: boolean;
+  is_gap_untested_critical?: boolean;
 }
 
 export interface CapabilityContribution {
   capabilityId: number;
   capabilityCode: string;
   capabilityName: string;
+  capabilityDomain?: string;
   toolId: number;
   toolName: string;
   controlEffect: CoverageType;
+  theoreticalEffect?: CoverageType;
+  realEffect?: CoverageType;
   configuredEffectDefault?: ControlEffect;
   controlEffectSource?: "default" | "override";
   overrideApplied?: boolean;
@@ -475,7 +500,10 @@ export interface TechniqueCoverageContribution {
   capability_id: number;
   capability_code: string;
   capability_name: string;
+  capability_domain?: string;
   control_effect: CoverageType;
+  theoretical_effect?: CoverageType;
+  real_effect?: CoverageType;
   configured_effect_default?: ControlEffect;
   control_effect_source?: "default" | "override";
   override_applied?: boolean;
@@ -506,4 +534,63 @@ export interface DerivedTechnique extends TechniqueCoverage {
 export interface ToolCoverageSummary {
   id: number | "all";
   name: string;
+}
+
+export interface DashboardSummary {
+  total_techniques: number;
+  theoretical_coverage_pct: number;
+  real_coverage_pct: number;
+  tested_coverage_pct: number;
+  critical_gap_count: number;
+  detect_only_count: number;
+  low_confidence_count: number;
+}
+
+export interface DashboardTopRisk {
+  technique_id: number;
+  technique_code: string;
+  technique_name: string;
+  severity: "critical" | "high" | "medium";
+  reason: string;
+  summary: string;
+  score: number;
+}
+
+export interface DashboardDomainRow {
+  domain: string;
+  technique_count: number;
+  theoretical_coverage_pct: number;
+  real_coverage_pct: number;
+  critical_gap_count: number;
+}
+
+export interface DashboardScopeRow {
+  scope_code: string;
+  scope_name: string;
+  covered_count: number;
+  missing_count: number;
+  partial_count: number;
+}
+
+export interface DashboardTestStatusSummary {
+  passed: number;
+  partial: number;
+  failed: number;
+  detected_not_blocked: number;
+  not_tested: number;
+}
+
+export interface CoverageSnapshot {
+  id: number;
+  tenant_id: number;
+  name: string;
+  created_at: string;
+  metadata_json: Record<string, unknown> | null;
+  summary_json: Record<string, number>;
+}
+
+export interface DashboardDelta {
+  real_coverage_pct_change: number;
+  tested_coverage_pct_change: number;
+  critical_gap_count_change: number;
 }

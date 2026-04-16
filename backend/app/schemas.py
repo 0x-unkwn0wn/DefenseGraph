@@ -8,11 +8,12 @@ ImplementationLevel = Literal["none", "partial", "full"]
 ControlEffect = Literal["none", "detect", "block", "prevent"]
 MappedControlEffect = Literal["detect", "block", "prevent"]
 MappingCoverage = Literal["full", "partial"]
-ConfidenceSource = Literal["declared", "assessed", "evidenced", "tested"]
+ConfidenceSource = Literal["declared", "assessed", "evidenced", "validated", "tested"]
 ConfidenceLevel = Literal["low", "medium", "high"]
 AssessmentAnswerValue = Literal["yes", "no", "partial", "unknown"]
 ConfigurationAnswerValue = Literal["yes", "no", "partial", "unknown"]
 CoverageStatus = Literal["unmapped", "no_coverage", "detect_only", "partial", "low_confidence", "covered"]
+TestStatus = Literal["not_tested", "passed", "partial", "failed", "detected_not_blocked"]
 
 # Active security control categories (prevention, detection, or response tools).
 # "BAS" is intentionally excluded from this list — BAS tools are cross-functional
@@ -83,7 +84,7 @@ ToolType = Literal["control", "analytics", "response", "validated", "assurance"]
 # Primary function label exposed in the control output
 ControlFunction = Literal["Prevent", "Detect", "Respond"]
 
-# BAS test outcome for a given TTP
+# Legacy BAS test outcome for a given TTP.
 BASResult = Literal["blocked", "detected", "not_detected", "not_tested"]
 
 ToolTag = str
@@ -556,6 +557,7 @@ class BASValidationRead(BaseModel):
     bas_tool_id: int | None
     bas_tool_name: str | None
     bas_result: BASResult
+    test_status: TestStatus
     last_validation_date: str | None
     notes: str
 
@@ -572,6 +574,32 @@ class BASValidationUpdate(BaseModel):
     bas_tool_id: int | None = None
     bas_result: BASResult | None = None
     last_validation_date: str | None = None
+    notes: str | None = None
+
+
+class TechniqueTestResultRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    technique_id: int
+    linked_tool_id: int | None
+    linked_tool_name: str | None
+    test_status: TestStatus
+    last_tested_at: str | None
+    notes: str
+
+
+class TechniqueTestResultCreate(BaseModel):
+    linked_tool_id: int | None = None
+    test_status: TestStatus
+    last_tested_at: str | None = None
+    notes: str = ""
+
+
+class TechniqueTestResultUpdate(BaseModel):
+    linked_tool_id: int | None = None
+    test_status: TestStatus | None = None
+    last_tested_at: str | None = None
     notes: str | None = None
 
 
@@ -601,7 +629,10 @@ class TechniqueCoverageContributionRead(BaseModel):
     capability_id: int
     capability_code: str
     capability_name: str
+    capability_domain: str
     control_effect: CoverageType
+    theoretical_effect: CoverageType
+    real_effect: CoverageType
     configured_effect_default: ControlEffect
     control_effect_source: Literal["default", "override"]
     override_applied: bool
@@ -631,6 +662,8 @@ class TechniqueCoverageRead(BaseModel):
     attack_url: str
     has_capability_mappings: bool = True
     mapped_capability_count: int = 0
+    theoretical_effect: CoverageType
+    real_effect: CoverageType
     available_effects: list[CoverageType]
     best_effect: CoverageType
     detection_count: int
@@ -641,13 +674,18 @@ class TechniqueCoverageRead(BaseModel):
     effective_outcome: EffectiveOutcome
     tool_count: int
     confidence_level: ConfidenceLevel
+    confidence_source_summary: list[ConfidenceSource]
     coverage_status: CoverageStatus
+    mapped_domains: list[str]
     response_enabled: bool
     response_actions: list[TechniqueCoverageResponseActionRead]
     dependency_flags: list[str]
     contributing_tools: list[TechniqueCoverageContributionRead]
     relevant_scopes: list[TechniqueRelevantScopeRead]
     scope_summary: ScopeSummaryRead
+    test_results: list[TechniqueTestResultRead]
+    test_status: TestStatus
+    test_status_summary: dict[TestStatus, int]
     # BAS (Breach and Attack Simulation) validated fields.
     # BAS is a cross-functional validation capability, not an active control.
     bas_validations: list[BASValidationRead]
@@ -666,6 +704,67 @@ class TechniqueCoverageRead(BaseModel):
     is_gap_partially_configured_control: bool
     is_gap_scope_missing: bool
     is_gap_scope_partial: bool
+    is_gap_tested_failed: bool
+    is_gap_detected_not_blocked: bool
+    is_gap_untested_critical: bool
+
+
+class DashboardSummaryRead(BaseModel):
+    total_techniques: int
+    theoretical_coverage_pct: float
+    real_coverage_pct: float
+    tested_coverage_pct: float
+    critical_gap_count: int
+    detect_only_count: int
+    low_confidence_count: int
+
+
+class DashboardTopRiskRead(BaseModel):
+    technique_id: int
+    technique_code: str
+    technique_name: str
+    severity: Literal["critical", "high", "medium"]
+    reason: str
+    summary: str
+    score: int
+
+
+class DashboardDomainRead(BaseModel):
+    domain: str
+    technique_count: int
+    theoretical_coverage_pct: float
+    real_coverage_pct: float
+    critical_gap_count: int
+
+
+class DashboardScopeRead(BaseModel):
+    scope_code: str
+    scope_name: str
+    covered_count: int
+    missing_count: int
+    partial_count: int
+
+
+class DashboardTestStatusRead(BaseModel):
+    passed: int
+    partial: int
+    failed: int
+    detected_not_blocked: int
+    not_tested: int
+
+
+class CoverageSnapshotRead(BaseModel):
+    id: int
+    tenant_id: int
+    name: str
+    created_at: str
+    metadata_json: dict | None
+    summary_json: dict
+
+
+class CoverageSnapshotCreate(BaseModel):
+    name: str
+    metadata_json: dict | None = None
 
 
 ToolRead.model_rebuild()

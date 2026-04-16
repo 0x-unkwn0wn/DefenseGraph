@@ -1823,7 +1823,138 @@ button {
     grid-template-columns: 1fr;
   }
 
-  .matrix-column-body {
+.matrix-column-body {
     min-height: 0;
+  }
+}
+
+.dashboard-page {
+  display: grid;
+  gap: 1rem;
+}
+
+.dashboard-kpi-grid {
+  display: grid;
+  gap: 0.75rem;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+}
+
+.dashboard-kpi-grid.compact {
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+}
+
+.dashboard-kpi-card {
+  display: grid;
+  gap: 0.35rem;
+  padding: 0.9rem 1rem;
+  border: 1px solid var(--border-color);
+  background: rgba(15, 24, 34, 0.55);
+}
+
+.dashboard-kpi-card strong {
+  font-size: 1.35rem;
+}
+
+.dashboard-columns {
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.dashboard-delta-grid {
+  display: grid;
+  gap: 0.75rem;
+  margin-top: 1rem;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.dashboard-bar-list,
+.dashboard-scope-table,
+.technique-test-form {
+  display: grid;
+  gap: 0.85rem;
+}
+
+.dashboard-bar-row,
+.dashboard-scope-row {
+  display: grid;
+  gap: 0.35rem;
+}
+
+.dashboard-bar-track {
+  position: relative;
+  height: 0.7rem;
+  overflow: hidden;
+  border: 1px solid var(--border-color);
+  background: rgba(10, 16, 24, 0.8);
+}
+
+.dashboard-bar {
+  position: absolute;
+  top: 0;
+  left: 0;
+  bottom: 0;
+}
+
+.dashboard-bar.theoretical {
+  background: rgba(109, 168, 255, 0.35);
+}
+
+.dashboard-bar.real {
+  background: rgba(110, 221, 177, 0.65);
+}
+
+.dashboard-scope-row {
+  grid-template-columns: minmax(180px, 2fr) repeat(3, minmax(0, 1fr));
+  align-items: center;
+  padding: 0.75rem 0;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.toolbar-inline {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.error-text {
+  color: #ff8c8c;
+}
+
+.severity-critical {
+  color: #ffb3b3;
+}
+
+.severity-high {
+  color: #ffd7a8;
+}
+
+.severity-medium {
+  color: #e9e6af;
+}
+
+.technique-test-form {
+  margin-top: 1rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--border-color);
+}
+
+.workspace-field textarea,
+.workspace-field input,
+.workspace-field select {
+  width: 100%;
+}
+
+@media (max-width: 960px) {
+  .dashboard-columns {
+    grid-template-columns: 1fr;
+  }
+
+  .dashboard-delta-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .dashboard-scope-row {
+    grid-template-columns: 1fr;
   }
 }

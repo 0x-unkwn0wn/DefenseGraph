@@ -34,7 +34,10 @@ type GapCategoryKey =
   | "scope_missing"
   | "scope_partial"
   | "detection_without_response"
-  | "response_without_detection";
+  | "response_without_detection"
+  | "tested_failed"
+  | "detected_not_blocked"
+  | "untested_critical";
 
 interface CoveragePageProps {
   capabilities: Capability[];
@@ -42,6 +45,7 @@ interface CoveragePageProps {
   tools: Tool[];
   viewMode?: CoverageWorkspaceView;
   onChangeViewMode?: (view: CoverageWorkspaceView) => void;
+  onRefreshCoverage?: () => Promise<void> | void;
 }
 
 interface GapCategoryDefinition {
@@ -125,6 +129,24 @@ const gapCategoryDefinitions: GapCategoryDefinition[] = [
     description: "A response action exists, but nothing upstream is detecting the technique.",
     matches: (technique) => technique.is_gap_response_without_detection,
   },
+  {
+    key: "tested_failed",
+    label: "Tested failed",
+    description: "A validation run disproved the expected coverage path.",
+    matches: (technique) => technique.is_gap_tested_failed ?? false,
+  },
+  {
+    key: "detected_not_blocked",
+    label: "Detected not blocked",
+    description: "Testing showed the technique was seen but not stopped.",
+    matches: (technique) => technique.is_gap_detected_not_blocked ?? false,
+  },
+  {
+    key: "untested_critical",
+    label: "Untested critical",
+    description: "A blocking or prevention claim still lacks validation evidence.",
+    matches: (technique) => technique.is_gap_untested_critical ?? false,
+  },
 ];
 const allGapCategoryKeys = gapCategoryDefinitions.map((category) => category.key);
 
@@ -134,6 +156,7 @@ export function CoveragePage({
   tools,
   viewMode = "coverage",
   onChangeViewMode,
+  onRefreshCoverage,
 }: CoveragePageProps) {
   const [activeView, setActiveView] = useState<CoverageWorkspaceView>(viewMode);
   const [selectedToolId, setSelectedToolId] = useState<number | "all">("all");
@@ -559,7 +582,12 @@ export function CoveragePage({
         />
       </Card>
 
-      <TechniqueDetailPanel technique={activeTechnique} onClose={() => setSelectedTechniqueCode(null)} />
+      <TechniqueDetailPanel
+        technique={activeTechnique}
+        tools={tools}
+        onClose={() => setSelectedTechniqueCode(null)}
+        onRefreshCoverage={onRefreshCoverage}
+      />
     </div>
   );
 }

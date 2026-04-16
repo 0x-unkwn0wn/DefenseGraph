@@ -4,17 +4,26 @@ import type {
   BASValidation,
   Capability,
   CapabilityDetail,
+  CoverageSnapshot,
   ControlRead,
   CoverageScope,
   ConfigurationAnswerValue,
   ControlEffect,
   DataSource,
+  DashboardDelta,
+  DashboardDomainRow,
+  DashboardScopeRow,
+  DashboardSummary,
+  DashboardTestStatusSummary,
+  DashboardTopRisk,
   DocsCapability,
   DocsMapping,
   DocsToolType,
   ImplementationLevel,
   ResponseAction,
   TechniqueCoverage,
+  TechniqueTestResult,
+  TestStatus,
   Tool,
   ToolCapabilityDetail,
   ToolCapabilityEvidence,
@@ -26,7 +35,7 @@ import type {
   ScopeStatus,
 } from "./types";
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://127.0.0.1:8000";
+export const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://127.0.0.1:8000";
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(`${API_BASE_URL}${path}`, {
@@ -343,4 +352,79 @@ export function deleteBASValidation(validationId: number) {
   return request<void>(`/bas-validations/${validationId}`, {
     method: "DELETE",
   });
+}
+
+export function listTechniqueTestResults(techniqueId: number) {
+  return request<TechniqueTestResult[]>(`/techniques/${techniqueId}/test-results`);
+}
+
+export function createTechniqueTestResult(
+  techniqueId: number,
+  payload: {
+    linked_tool_id: number | null;
+    test_status: TestStatus;
+    last_tested_at: string | null;
+    notes?: string;
+  },
+) {
+  return request<TechniqueTestResult>(`/techniques/${techniqueId}/test-results`, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function updateTechniqueTestResult(
+  validationId: number,
+  payload: {
+    linked_tool_id?: number | null;
+    test_status?: TestStatus;
+    last_tested_at?: string | null;
+    notes?: string;
+  },
+) {
+  return request<TechniqueTestResult>(`/test-results/${validationId}`, {
+    method: "PUT",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function deleteTechniqueTestResult(validationId: number) {
+  return request<void>(`/test-results/${validationId}`, {
+    method: "DELETE",
+  });
+}
+
+export function getDashboardSummary() {
+  return request<DashboardSummary>("/dashboard/summary");
+}
+
+export function getDashboardTopRisks(limit = 10) {
+  return request<DashboardTopRisk[]>(`/dashboard/top-risks?limit=${limit}`);
+}
+
+export function getDashboardByDomain() {
+  return request<DashboardDomainRow[]>("/dashboard/by-domain");
+}
+
+export function getDashboardByScope() {
+  return request<DashboardScopeRow[]>("/dashboard/by-scope");
+}
+
+export function getDashboardTestStatus() {
+  return request<DashboardTestStatusSummary>("/dashboard/test-status");
+}
+
+export function listCoverageSnapshots() {
+  return request<CoverageSnapshot[]>("/dashboard/snapshots");
+}
+
+export function createCoverageSnapshot(payload: { name: string; metadata_json?: Record<string, unknown> | null }) {
+  return request<CoverageSnapshot>("/dashboard/snapshots", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function getDashboardDelta() {
+  return request<DashboardDelta | null>("/dashboard/delta");
 }

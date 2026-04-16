@@ -23,7 +23,8 @@ SOURCE_RANK = {
     "declared": 0,
     "assessed": 1,
     "evidenced": 2,
-    "tested": 3,
+    "validated": 3,
+    "tested": 4,
 }
 
 
@@ -60,6 +61,10 @@ def calculate_confidence(tool_capability: ToolCapability, total_questions: int) 
 
     if evidence_items:
         confidence_source = "evidenced"
+        confidence_level = max(confidence_level, "medium", key=lambda level: CONFIDENCE_RANK[level])
+
+    if tool_capability.confidence_source == "validated":
+        confidence_source = "validated"
         confidence_level = max(confidence_level, "medium", key=lambda level: CONFIDENCE_RANK[level])
 
     if tool_capability.confidence_source == "tested":

@@ -541,3 +541,14 @@ class BASValidation(Base):
 
     technique = relationship("Technique", back_populates="bas_validations")
     bas_tool = relationship("Tool", foreign_keys=[bas_tool_id])
+
+
+class CoverageSnapshot(Base):
+    __tablename__ = "coverage_snapshots"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    tenant_id: Mapped[int] = mapped_column(Integer, nullable=False, default=1, index=True)
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    created_at: Mapped[str] = mapped_column(String(50), nullable=False)
+    metadata_json: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    summary_json: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)

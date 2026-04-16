@@ -2,11 +2,18 @@ import sidebarLogo from "../../images/favicon.png";
 
 interface SidebarProps {
   collapsed: boolean;
-  current: "tools" | "coverage" | "docs";
+  current: "dashboard" | "tools" | "coverage" | "docs";
   onToggle: () => void;
 }
 
 const links = [
+  {
+    href: "#/dashboard",
+    key: "dashboard",
+    label: "Dashboard",
+    hint: "Current security state",
+    icon: "dashboard",
+  },
   {
     href: "#/tools",
     key: "tools",
@@ -31,6 +38,14 @@ const links = [
 ] as const;
 
 function NavIcon({ type }: { type: (typeof links)[number]["icon"] }) {
+  if (type === "dashboard") {
+    return (
+      <svg viewBox="0 0 16 16" aria-hidden="true">
+        <path d="M3 12.5V8.5M8 12.5V3.5M13 12.5V6.5" />
+      </svg>
+    );
+  }
+
   if (type === "tools") {
     return (
       <svg viewBox="0 0 16 16" aria-hidden="true">

@@ -8,6 +8,7 @@ interface TechniqueCellProps {
 
 export function TechniqueCell({ technique, isActive, onSelect }: TechniqueCellProps) {
   const isUnmapped = technique.has_capability_mappings === false;
+  const testStatus = technique.test_status ?? "not_tested";
   const gapClass =
     technique.is_gap_no_coverage
       ? "gap-critical"
@@ -55,8 +56,15 @@ export function TechniqueCell({ technique, isActive, onSelect }: TechniqueCellPr
         {technique.is_gap_low_confidence ? <span className="cell-flag">low conf</span> : null}
         {technique.is_gap_single_tool_dependency ? <span className="cell-flag">1 tool</span> : null}
         {technique.response_enabled ? <span className="cell-flag">response</span> : null}
+        {testStatus !== "not_tested" ? (
+          <span className="cell-flag">{formatTestStatus(testStatus)}</span>
+        ) : null}
       </span>
       {technique.is_gap_partial ? <span className="partial-indicator" aria-hidden="true" /> : null}
     </button>
   );
+}
+
+function formatTestStatus(value: string) {
+  return value.replace(/_/g, " ");
 }

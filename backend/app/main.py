@@ -1,6 +1,8 @@
 from contextlib import asynccontextmanager
 
-from fastapi import Depends, FastAPI, HTTPException, Query
+from datetime import datetime, timezone
+
+from fastapi import Depends, FastAPI, HTTPException, Query, Response
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import select
 from sqlalchemy.orm import Session, joinedload
@@ -16,6 +18,7 @@ from app.models import (
     CapabilityRequiredDataSource,
     CapabilitySupportedResponseAction,
     CapabilityTechniqueMap,
+    CoverageSnapshot,
     CoverageRole,
     CoverageScope,
     DataSource,
@@ -40,6 +43,8 @@ from app.schemas import (
     BASValidationCreate,
     BASValidationRead,
     BASValidationUpdate,
+    CoverageSnapshotCreate,
+    CoverageSnapshotRead,
     CapabilityDetailRead,
     CapabilityImplementingToolRead,
     CapabilityRequiredDataSourceRead,
@@ -49,6 +54,11 @@ from app.schemas import (
     CapabilityTechniqueMapRead,
     ConfidenceSummaryRead,
     ControlRead,
+    DashboardDomainRead,
+    DashboardScopeRead,
+    DashboardSummaryRead,
+    DashboardTestStatusRead,
+    DashboardTopRiskRead,
     CoverageRoleRead,
     CoverageScopeRead,
     ConfigurationSummaryRead,
@@ -84,6 +94,9 @@ from app.schemas import (
     ToolResponseActionRead,
     ToolResponseActionUpsert,
     TechniqueRelevantScopeRead,
+    TechniqueTestResultCreate,
+    TechniqueTestResultRead,
+    TechniqueTestResultUpdate,
     VendorRead,
 )
 from app.seed import seed_reference_data, sync_reference_data
@@ -95,8 +108,20 @@ from app.services.configuration import (
 from app.services.confidence import sync_tool_capability_confidence
 from app.services.confidence import calculate_confidence
 from app.services.coverage import compute_coverage
+from app.services.dashboard import (
+    build_dashboard_summary,
+    build_domain_breakdown,
+    build_scope_breakdown,
+    build_snapshot_delta,
+    build_snapshot_summary,
+    build_test_status_breakdown,
+    build_top_risks,
+    current_gap_rows,
+)
 from app.services.docs import get_capability_docs, get_mapping_docs, get_tool_type_docs
 from app.services.mappings import get_structural_technique_maps
+from app.services.reports import build_executive_report_pdf, build_gap_csv, build_technical_report_pdf
+from app.services.test_status import normalize_test_status, to_legacy_bas_result
 from app.tool_categories import normalize_tool_category
 from app.tool_types import is_validated_tool, normalize_tool_types
 from app.services.tool_templates import (
@@ -1166,6 +1191,117 @@ def get_coverage(db: Session = Depends(get_db)):
     return compute_coverage(db)
 
 
+@app.get("/dashboard/summary", response_model=DashboardSummaryRead)
+def get_dashboard_summary(db: Session = Depends(get_db)):
+    return build_dashboard_summary(compute_coverage(db))
+
+
+@app.get("/dashboard/top-risks", response_model=list[DashboardTopRiskRead])
+def get_dashboard_top_risks(limit: int = Query(default=10, ge=1, le=25), db: Session = Depends(get_db)):
+    return build_top_risks(compute_coverage(db), limit=limit)
+
+
+@app.get("/dashboard/by-domain", response_model=list[DashboardDomainRead])
+def get_dashboard_by_domain(db: Session = Depends(get_db)):
+    return build_domain_breakdown(compute_coverage(db))
+
+
+@app.get("/dashboard/by-scope", response_model=list[DashboardScopeRead])
+def get_dashboard_by_scope(db: Session = Depends(get_db)):
+    return build_scope_breakdown(compute_coverage(db))
+
+
+@app.get("/dashboard/test-status", response_model=DashboardTestStatusRead)
+def get_dashboard_test_status(db: Session = Depends(get_db)):
+    return build_test_status_breakdown(compute_coverage(db))
+
+
+@app.get("/dashboard/snapshots", response_model=list[CoverageSnapshotRead])
+def list_dashboard_snapshots(db: Session = Depends(get_db)):
+    rows = db.execute(select(CoverageSnapshot).order_by(CoverageSnapshot.created_at.desc(), CoverageSnapshot.id.desc())).scalars().all()
+    return [
+        CoverageSnapshotRead(
+            id=row.id,
+            tenant_id=row.tenant_id,
+            name=row.name,
+            created_at=row.created_at,
+            metadata_json=row.metadata_json,
+            summary_json=row.summary_json,
+        )
+        for row in rows
+    ]
+
+
+@app.post("/dashboard/snapshots", response_model=CoverageSnapshotRead, status_code=201)
+def create_dashboard_snapshot(payload: CoverageSnapshotCreate, db: Session = Depends(get_db)):
+    summary_json = build_snapshot_summary(compute_coverage(db))
+    snapshot = CoverageSnapshot(
+        tenant_id=1,
+        name=payload.name.strip(),
+        created_at=datetime.now(timezone.utc).isoformat(),
+        metadata_json=payload.metadata_json,
+        summary_json=summary_json,
+    )
+    db.add(snapshot)
+    db.commit()
+    db.refresh(snapshot)
+    return CoverageSnapshotRead(
+        id=snapshot.id,
+        tenant_id=snapshot.tenant_id,
+        name=snapshot.name,
+        created_at=snapshot.created_at,
+        metadata_json=snapshot.metadata_json,
+        summary_json=snapshot.summary_json,
+    )
+
+
+@app.get("/dashboard/delta")
+def get_dashboard_delta(db: Session = Depends(get_db)):
+    current = build_snapshot_summary(compute_coverage(db))
+    previous = db.execute(
+        select(CoverageSnapshot).order_by(CoverageSnapshot.created_at.desc(), CoverageSnapshot.id.desc())
+    ).scalars().first()
+    return build_snapshot_delta(current, previous.summary_json if previous else None)
+
+
+@app.get("/reports/executive")
+def get_executive_report(db: Session = Depends(get_db)):
+    rows = compute_coverage(db)
+    summary = build_dashboard_summary(rows)
+    top_risks = build_top_risks(rows, limit=5)
+    scope_rows = [row.model_dump() for row in build_scope_breakdown(rows)]
+    test_status = build_test_status_breakdown(rows).model_dump()
+    pdf_bytes = build_executive_report_pdf(summary, top_risks, scope_rows, test_status)
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={"Content-Disposition": 'attachment; filename="defensegraph-executive-report.pdf"'},
+    )
+
+
+@app.get("/reports/technical")
+def get_technical_report(db: Session = Depends(get_db)):
+    rows = compute_coverage(db)
+    summary = build_dashboard_summary(rows)
+    top_risks = build_top_risks(rows, limit=10)
+    pdf_bytes = build_technical_report_pdf(summary, top_risks, rows)
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={"Content-Disposition": 'attachment; filename="defensegraph-technical-report.pdf"'},
+    )
+
+
+@app.get("/reports/gaps.csv")
+def get_gap_csv(db: Session = Depends(get_db)):
+    csv_text = build_gap_csv(compute_coverage(db))
+    return Response(
+        content=csv_text,
+        media_type="text/csv",
+        headers={"Content-Disposition": 'attachment; filename="defensegraph-gaps.csv"'},
+    )
+
+
 # ---------------------------------------------------------------------------
 # Controls endpoint
 # Returns only active security control tools (tool_type != "validated").
@@ -1272,8 +1408,21 @@ def _serialize_bas_validation(v: BASValidation) -> BASValidationRead:
         technique_id=v.technique_id,
         bas_tool_id=v.bas_tool_id,
         bas_tool_name=v.bas_tool.name if v.bas_tool else None,
-        bas_result=v.bas_result,
+        bas_result=to_legacy_bas_result(v.bas_result),
+        test_status=normalize_test_status(v.bas_result),
         last_validation_date=v.last_validation_date,
+        notes=v.notes,
+    )
+
+
+def _serialize_test_result(v: BASValidation) -> TechniqueTestResultRead:
+    return TechniqueTestResultRead(
+        id=v.id,
+        technique_id=v.technique_id,
+        linked_tool_id=v.bas_tool_id,
+        linked_tool_name=v.bas_tool.name if v.bas_tool else None,
+        test_status=normalize_test_status(v.bas_result),
+        last_tested_at=v.last_validation_date,
         notes=v.notes,
     )
 
@@ -1326,7 +1475,7 @@ def create_bas_validation(
     validation = BASValidation(
         technique_id=technique_id,
         bas_tool_id=payload.bas_tool_id,
-        bas_result=payload.bas_result,
+        bas_result=normalize_test_status(payload.bas_result),
         last_validation_date=payload.last_validation_date,
         notes=payload.notes.strip(),
     )
@@ -1369,7 +1518,7 @@ def update_bas_validation(
         validation.bas_tool_id = payload.bas_tool_id
 
     if payload.bas_result is not None:
-        validation.bas_result = payload.bas_result
+        validation.bas_result = normalize_test_status(payload.bas_result)
     if payload.last_validation_date is not None:
         validation.last_validation_date = payload.last_validation_date
     if payload.notes is not None:
@@ -1382,6 +1531,83 @@ def update_bas_validation(
     return _serialize_bas_validation(v)
 
 
+@app.get("/techniques/{technique_id}/test-results", response_model=list[TechniqueTestResultRead])
+def list_test_results(technique_id: int, db: Session = Depends(get_db)):
+    _get_technique_or_404(db, technique_id)
+    statement = (
+        select(BASValidation)
+        .options(joinedload(BASValidation.bas_tool))
+        .where(BASValidation.technique_id == technique_id)
+        .order_by(BASValidation.last_validation_date.desc(), BASValidation.id.desc())
+    )
+    return [_serialize_test_result(v) for v in db.execute(statement).scalars().all()]
+
+
+@app.post("/techniques/{technique_id}/test-results", response_model=TechniqueTestResultRead, status_code=201)
+def create_test_result(
+    technique_id: int,
+    payload: TechniqueTestResultCreate,
+    db: Session = Depends(get_db),
+):
+    _get_technique_or_404(db, technique_id)
+    if payload.linked_tool_id is not None:
+        linked_tool = db.get(Tool, payload.linked_tool_id)
+        if linked_tool is None:
+            raise HTTPException(status_code=404, detail="Linked tool not found")
+
+    validation = BASValidation(
+        technique_id=technique_id,
+        bas_tool_id=payload.linked_tool_id,
+        bas_result=payload.test_status,
+        last_validation_date=payload.last_tested_at,
+        notes=payload.notes.strip(),
+    )
+    db.add(validation)
+    db.commit()
+    v = db.execute(
+        select(BASValidation).options(joinedload(BASValidation.bas_tool)).where(BASValidation.id == validation.id)
+    ).scalar_one()
+    return _serialize_test_result(v)
+
+
+@app.put("/test-results/{validation_id}", response_model=TechniqueTestResultRead)
+def update_test_result(
+    validation_id: int,
+    payload: TechniqueTestResultUpdate,
+    db: Session = Depends(get_db),
+):
+    validation = db.execute(
+        select(BASValidation).options(joinedload(BASValidation.bas_tool)).where(BASValidation.id == validation_id)
+    ).scalar_one_or_none()
+    if validation is None:
+        raise HTTPException(status_code=404, detail="Test result not found")
+    if payload.linked_tool_id is not None:
+        linked_tool = db.get(Tool, payload.linked_tool_id)
+        if linked_tool is None:
+            raise HTTPException(status_code=404, detail="Linked tool not found")
+        validation.bas_tool_id = payload.linked_tool_id
+    if payload.test_status is not None:
+        validation.bas_result = payload.test_status
+    if payload.last_tested_at is not None:
+        validation.last_validation_date = payload.last_tested_at
+    if payload.notes is not None:
+        validation.notes = payload.notes.strip()
+    db.commit()
+    v = db.execute(
+        select(BASValidation).options(joinedload(BASValidation.bas_tool)).where(BASValidation.id == validation_id)
+    ).scalar_one()
+    return _serialize_test_result(v)
+
+
+@app.delete("/test-results/{validation_id}", status_code=204)
+def delete_test_result(validation_id: int, db: Session = Depends(get_db)):
+    validation = db.get(BASValidation, validation_id)
+    if validation is None:
+        raise HTTPException(status_code=404, detail="Test result not found")
+    db.delete(validation)
+    db.commit()
+
+
 @app.delete("/bas-validations/{validation_id}", status_code=204)
 def delete_bas_validation(validation_id: int, db: Session = Depends(get_db)):
     """Delete a BAS validation record."""
@@ -1390,3 +1616,8 @@ def delete_bas_validation(validation_id: int, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="BAS validation not found")
     db.delete(validation)
     db.commit()
+    DashboardDomainRead,
+    DashboardScopeRead,
+    DashboardSummaryRead,
+    DashboardTestStatusRead,
+    DashboardTopRiskRead,

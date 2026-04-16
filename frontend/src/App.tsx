@@ -25,6 +25,7 @@ import {
 import { AppShell } from "./components/AppShell";
 import { CapabilityDetailPage } from "./pages/CapabilityDetailPage";
 import { CoveragePage } from "./pages/CoveragePage";
+import { DashboardPage } from "./pages/DashboardPage";
 import { DocsPage } from "./pages/DocsPage";
 import { ToolDetailPage } from "./pages/ToolDetailPage";
 import { ToolsPage } from "./pages/ToolsPage";
@@ -47,6 +48,7 @@ import type {
 } from "./types";
 
 type Route =
+  | { page: "dashboard" }
   | { page: "tools" }
   | { page: "tool-detail"; toolId: number }
   | { page: "capability-detail"; capabilityId: number }
@@ -54,6 +56,10 @@ type Route =
   | { page: "docs" };
 
 function parseRoute(hash: string): Route {
+  if (hash === "#/dashboard") {
+    return { page: "dashboard" };
+  }
+
   const toolMatch = hash.match(/^#\/tools\/(\d+)$/);
   if (toolMatch) {
     return { page: "tool-detail", toolId: Number(toolMatch[1]) };
@@ -81,7 +87,7 @@ function parseRoute(hash: string): Route {
     return { page: "docs" };
   }
 
-  return { page: "tools" };
+  return { page: "dashboard" };
 }
 
 function buildCoverageHash(view: "coverage" | "gaps") {
@@ -105,7 +111,7 @@ export default function App() {
 
   useEffect(() => {
     if (!window.location.hash) {
-      window.location.hash = "#/tools";
+      window.location.hash = "#/dashboard";
     }
 
     const onHashChange = () => setRoute(parseRoute(window.location.hash));
@@ -405,6 +411,11 @@ export default function App() {
 
   const pageMeta = (() => {
     switch (route.page) {
+      case "dashboard":
+        return {
+          title: "Dashboard",
+          description: "Current-state security posture across ATT&CK coverage, confidence, testing, scope, and operational gaps.",
+        };
       case "tools":
         return {
           title: "Tools",
@@ -455,6 +466,8 @@ export default function App() {
         <ToolsPage tools={tools} onCreateTool={handleCreateTool} onDeleteTool={handleDeleteTool} />
       ) : null}
 
+      {!isLoading && route.page === "dashboard" ? <DashboardPage /> : null}
+
       {!isLoading && route.page === "tool-detail" ? (
         <ToolDetailPage
           toolId={route.toolId}
@@ -488,6 +501,7 @@ export default function App() {
           tools={tools}
           capabilities={capabilities}
           viewMode={route.view}
+          onRefreshCoverage={refreshToolsAndCoverage}
           onChangeViewMode={(view) => {
             const nextHash = buildCoverageHash(view);
             if (window.location.hash !== nextHash) {

@@ -1,4 +1,7 @@
-import type { DerivedTechnique, ToolType } from "../types";
+import { useState } from "react";
+
+import { createTechniqueTestResult, deleteTechniqueTestResult } from "../api";
+import type { DerivedTechnique, TestStatus, Tool, ToolType } from "../types";
 
 const TOOL_TYPE_LABEL: Record<ToolType, string> = {
   control: "control",
@@ -10,34 +13,67 @@ const TOOL_TYPE_LABEL: Record<ToolType, string> = {
 
 interface TechniqueDetailPanelProps {
   technique: DerivedTechnique | null;
+  tools?: Tool[];
   onClose: () => void;
+  onRefreshCoverage?: () => Promise<void> | void;
 }
 
-export function TechniqueDetailPanel({ technique, onClose }: TechniqueDetailPanelProps) {
+export function TechniqueDetailPanel({ technique, tools = [], onClose, onRefreshCoverage }: TechniqueDetailPanelProps) {
+  const [testStatus, setTestStatus] = useState<TestStatus>("not_tested");
+  const [linkedToolId, setLinkedToolId] = useState<string>("none");
+  const [lastTestedAt, setLastTestedAt] = useState("");
+  const [notes, setNotes] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
+
   if (!technique) {
     return null;
   }
 
-  const isUnmapped = technique.has_capability_mappings === false;
-  const uniqueTools = Array.from(
-    new Map(
-      technique.contributions.map((contribution) => [
-        contribution.toolId,
-        { id: contribution.toolId, name: contribution.toolName },
-      ]),
-    ).values(),
-  );
+  const currentTechnique = technique;
+  const validationTools = tools.filter((tool) => tool.tool_types.includes("validated") || tool.tool_types.includes("assurance"));
+  const currentTestStatus = currentTechnique.test_status ?? "not_tested";
+  const testResults = currentTechnique.test_results ?? [];
+  const testStatusSummary = currentTechnique.test_status_summary ?? {
+    not_tested: 1,
+    passed: 0,
+    partial: 0,
+    failed: 0,
+    detected_not_blocked: 0,
+  };
 
-  const coverageSummary =
-    isUnmapped
-      ? "This technique has no capability mappings in the current DefenseGraph model."
-      : technique.coverage_type === "prevent"
-      ? "At least one tool prevents this technique."
-      : technique.coverage_type === "block"
-        ? "At least one tool blocks this technique, but none prevent it."
-        : technique.coverage_type === "detect"
-          ? "The current scope detects this technique but does not block it."
-          : "No tool currently contributes coverage for this technique.";
+  async function handleCreateTestResult(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setIsSaving(true);
+    setError(null);
+    try {
+      await createTechniqueTestResult(currentTechnique.technique_id, {
+        linked_tool_id: linkedToolId === "none" ? null : Number(linkedToolId),
+        test_status: testStatus,
+        last_tested_at: lastTestedAt || null,
+        notes,
+      });
+      setTestStatus("not_tested");
+      setLinkedToolId("none");
+      setLastTestedAt("");
+      setNotes("");
+      await onRefreshCoverage?.();
+    } catch (saveError) {
+      setError(saveError instanceof Error ? saveError.message : "Failed to save test result");
+    } finally {
+      setIsSaving(false);
+    }
+  }
+
+  async function handleDeleteTestResult(testResultId: number) {
+    setError(null);
+    try {
+      await deleteTechniqueTestResult(testResultId);
+      await onRefreshCoverage?.();
+    } catch (deleteError) {
+      setError(deleteError instanceof Error ? deleteError.message : "Failed to delete test result");
+    }
+  }
 
   return (
     <aside className="technique-detail-panel">
@@ -45,7 +81,7 @@ export function TechniqueDetailPanel({ technique, onClose }: TechniqueDetailPane
         <div>
           <p className="eyebrow">Technique detail</p>
           <h3>
-            {technique.technique_code} {technique.technique_name}
+            {currentTechnique.technique_code} {currentTechnique.technique_name}
           </h3>
         </div>
         <button type="button" className="panel-close-button" onClick={onClose} aria-label="Close detail panel">
@@ -56,175 +92,92 @@ export function TechniqueDetailPanel({ technique, onClose }: TechniqueDetailPane
       <div className="detail-panel-section">
         <div className="detail-kv">
           <span className="detail-label">Technique ID</span>
-          <a
-            href={technique.attack_url}
-            target="_blank"
-            rel="noreferrer noopener"
-            className="attack-link"
-          >
-            {technique.technique_code} ↗
+          <a href={currentTechnique.attack_url} target="_blank" rel="noreferrer noopener" className="attack-link">
+            {currentTechnique.technique_code} ↗
           </a>
         </div>
         <div className="detail-kv">
-          <span className="detail-label">Catalog scope</span>
-          <strong>{technique.display_group}</strong>
-        </div>
-        <div className="detail-kv">
           <span className="detail-label">Tactic</span>
-          <strong>{technique.tactic}</strong>
-        </div>
-        <div className="detail-kv">
-          <span className="detail-label">Coverage</span>
-          <span className={`coverage-pill ${technique.coverage_type}`}>{technique.coverage_type}</span>
+          <strong>{currentTechnique.tactic}</strong>
         </div>
         <div className="detail-kv">
           <span className="detail-label">Model status</span>
-          <strong>{isUnmapped ? "Unmapped" : `${technique.mapped_capability_count ?? 0} capability mappings`}</strong>
-        </div>
-        <div className="detail-kv">
-          <span className="detail-label">Outcome</span>
-          <strong>{technique.effective_outcome}</strong>
+          <strong>{currentTechnique.has_capability_mappings === false ? "Unmapped" : `${currentTechnique.mapped_capability_count ?? 0} capability mappings`}</strong>
         </div>
         <div className="detail-kv">
           <span className="detail-label">Confidence</span>
-          <span className={`coverage-pill ${technique.confidence_level}`}>{technique.confidence_level}</span>
+          <span className={`coverage-pill ${currentTechnique.confidence_level}`}>{currentTechnique.confidence_level}</span>
         </div>
+      </div>
+
+      {currentTechnique.has_capability_mappings === false ? (
+        <div className="detail-panel-section">
+          <p className="muted">
+            This technique is excluded from gap counts until the model is extended with capability mappings.
+          </p>
+        </div>
+      ) : null}
+
+      <div className="detail-panel-section">
+        <span className="detail-label">Theoretical coverage</span>
         <div className="detail-kv">
-          <span className="detail-label">Tools covering it</span>
-          <strong>{technique.tool_count}</strong>
+          <span>Expected effect</span>
+          <span className={`coverage-pill ${currentTechnique.theoretical_effect ?? "none"}`}>{currentTechnique.theoretical_effect ?? "none"}</span>
         </div>
-        {technique.is_gap_partial ? (
-          <div className="detail-kv">
-            <span className="detail-label">Coverage quality</span>
-            <span className="partial-badge">Partial</span>
-          </div>
-        ) : null}
-        {technique.is_gap_single_tool_dependency ? (
-          <div className="detail-kv">
-            <span className="detail-label">Dependency</span>
-            <span className="partial-badge">Single tool</span>
-          </div>
-        ) : null}
-        {technique.response_enabled ? (
-          <div className="detail-kv">
-            <span className="detail-label">Response</span>
-            <span className="partial-badge">Enabled</span>
-          </div>
-        ) : null}
-        {technique.is_gap_unconfigured_control ? (
-          <div className="detail-kv">
-            <span className="detail-label">Configuration</span>
-            <span className="partial-badge">Unverified</span>
-          </div>
-        ) : null}
-        {technique.is_gap_partially_configured_control ? (
-          <div className="detail-kv">
-            <span className="detail-label">Configuration</span>
-            <span className="partial-badge">Partial</span>
-          </div>
-        ) : null}
-        {technique.is_gap_scope_missing ? (
-          <div className="detail-kv">
-            <span className="detail-label">Scope</span>
-            <span className="partial-badge">Missing</span>
-          </div>
-        ) : null}
-        {technique.is_gap_scope_partial ? (
-          <div className="detail-kv">
-            <span className="detail-label">Scope</span>
-            <span className="partial-badge">Partial</span>
-          </div>
-        ) : null}
-      </div>
-
-      <div className="detail-panel-section">
-        <span className="detail-label">Summary</span>
-        <p className="muted">{coverageSummary}</p>
-        <p className="muted">
-          {isUnmapped
-            ? "Because no capability is mapped to this technique yet, it is excluded from gap counts until the model is extended."
-            : technique.is_gap_no_coverage
-            ? "This technique is currently uncovered."
-            : technique.is_gap_detect_only
-              ? "Coverage is limited to detection and should be strengthened."
-              : technique.is_gap_partial
-                ? "The best available control path is still partial."
-                : technique.is_gap_low_confidence
-                  ? "Coverage exists but confidence remains low."
-                  : "Coverage is present without an immediate weak-point flag."}
-        </p>
-        {technique.dependency_flags.length > 0 ? (
-          <p className="muted">{technique.dependency_flags.join(" | ")}</p>
-        ) : null}
-      </div>
-
-      <div className="detail-panel-section">
-        <span className="detail-label">Relevant scopes</span>
-        {technique.relevant_scopes.length === 0 ? (
-          <p className="muted">No explicit scope mapping exists for this technique yet.</p>
-        ) : (
-          <div className="detail-list">
-            {technique.relevant_scopes.map((scope) => {
-              const status = technique.scope_summary.full_scopes.includes(scope.coverage_scope.code)
-                ? "full"
-                : technique.scope_summary.partial_scopes.includes(scope.coverage_scope.code)
-                  ? "partial"
-                  : "none";
-              return (
-                <div key={`${scope.coverage_scope_id}-${scope.relevance}`} className="detail-item stacked">
-                  <div className="detail-row">
-                    <span>{scope.coverage_scope.name}</span>
-                    <div className="workspace-badges">
-                      <span className="count-chip">{scope.relevance}</span>
-                      <span className={`coverage-pill ${status === "none" ? "none" : "detect"}`}>{status}</span>
-                    </div>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        )}
-      </div>
-
-      <div className="detail-panel-section">
-        <span className="detail-label">Tool contributions</span>
-        {isUnmapped ? (
-          <p className="muted">No capability mappings exist yet, so no tool can contribute to this technique.</p>
-        ) : uniqueTools.length === 0 ? (
-          <p className="muted">No tools currently cover this technique.</p>
-        ) : (
-          <div className="detail-list">
-            {technique.contributions.map((contribution) => (
-              <div key={`${contribution.toolId}-${contribution.capabilityId}-${contribution.controlEffect}`} className="detail-item stacked">
-                <div className="detail-row">
-                  <span>{contribution.toolName}</span>
-                  <div className="workspace-badges">
-                    <span className={`coverage-pill ${contribution.controlEffect}`}>
-                      {contribution.controlEffect}
-                    </span>
-                    <span className="count-chip">{contribution.controlEffectSource}</span>
-                  </div>
-                </div>
-                <p className="muted">
-                  {contribution.capabilityName} | {contribution.toolTypes.map((t) => TOOL_TYPE_LABEL[t]).join(", ")} | default{" "}
-                  {contribution.configuredEffectDefault} | {contribution.implementationLevel} implementation
-                </p>
+        <div className="detail-list">
+          {currentTechnique.contributions.map((contribution) => (
+            <div key={`${contribution.toolId}-${contribution.capabilityId}-theoretical`} className="detail-item stacked">
+              <div className="detail-row">
+                <strong>{contribution.toolName}</strong>
+                <span className={`coverage-pill ${contribution.theoreticalEffect ?? contribution.controlEffect}`}>
+                  {contribution.theoreticalEffect ?? contribution.controlEffect}
+                </span>
               </div>
-            ))}
-          </div>
-        )}
+              <p className="muted">
+                {contribution.capabilityName} | {contribution.toolTypes.map((type) => TOOL_TYPE_LABEL[type]).join(", ")} | {contribution.controlEffectSource}
+              </p>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div className="detail-panel-section">
+        <span className="detail-label">Real coverage</span>
+        <div className="detail-kv">
+          <span>Resolved effect</span>
+          <span className={`coverage-pill ${currentTechnique.real_effect ?? currentTechnique.coverage_type}`}>{currentTechnique.real_effect ?? currentTechnique.coverage_type}</span>
+        </div>
+        {currentTechnique.dependency_flags.length > 0 ? <p className="muted">{currentTechnique.dependency_flags.join(" | ")}</p> : null}
+        <div className="detail-list">
+          {currentTechnique.contributions.map((contribution) => (
+            <div key={`${contribution.toolId}-${contribution.capabilityId}-real`} className="detail-item stacked">
+              <div className="detail-row">
+                <strong>{contribution.toolName}</strong>
+                <div className="workspace-badges">
+                  <span className={`coverage-pill ${contribution.realEffect ?? contribution.controlEffect}`}>
+                    {contribution.realEffect ?? contribution.controlEffect}
+                  </span>
+                  <span className="count-chip">{contribution.controlEffectSource}</span>
+                </div>
+              </div>
+              <p className="muted">
+                {contribution.capabilityName} | {contribution.toolTypes.map((type) => TOOL_TYPE_LABEL[type]).join(", ")} | default {contribution.configuredEffectDefault} | {contribution.implementationLevel} implementation
+              </p>
+            </div>
+          ))}
+        </div>
       </div>
 
       <div className="detail-panel-section">
         <span className="detail-label">Response tools</span>
-        {technique.response_actions.length === 0 ? (
+        {currentTechnique.response_actions.length === 0 ? (
           <p className="muted">No linked response action is available for this technique.</p>
         ) : (
           <div className="detail-list">
-            {technique.response_actions.map((action) => (
+            {currentTechnique.response_actions.map((action) => (
               <div key={`${action.tool_id}-${action.action_code}`} className="detail-item stacked">
                 <div className="detail-row">
-                  <span>{action.tool_name}</span>
+                  <strong>{action.tool_name}</strong>
                   <span className="count-chip">response</span>
                 </div>
                 <p className="muted">
@@ -237,38 +190,71 @@ export function TechniqueDetailPanel({ technique, onClose }: TechniqueDetailPane
       </div>
 
       <div className="detail-panel-section">
-        <span className="detail-label">Capabilities</span>
-        {isUnmapped ? (
-          <p className="muted">No capability mappings are defined for this technique yet.</p>
-        ) : technique.contributions.length === 0 ? (
-          <p className="muted">No capability mappings are currently contributing.</p>
-        ) : (
-          <div className="detail-list">
-            {technique.contributions.map((contribution) => (
-              <div
-                key={`${contribution.toolId}-${contribution.capabilityId}-${contribution.controlEffect}`}
-                className="detail-item stacked"
-              >
-                <div className="detail-row">
-                  <span>{contribution.capabilityName}</span>
-                  <span className={`coverage-pill ${contribution.controlEffect}`}>
-                    {contribution.controlEffect}
-                  </span>
+        <span className="detail-label">Tested status</span>
+        <div className="detail-kv">
+          <span>Current status</span>
+          <span className="count-chip">{formatTestStatus(currentTestStatus)}</span>
+        </div>
+        <p className="muted">
+          {testStatusSummary.passed} passed | {testStatusSummary.partial} partial | {testStatusSummary.failed} failed | {testStatusSummary.detected_not_blocked} detected not blocked
+        </p>
+        <div className="detail-list">
+          {testResults.map((result) => (
+            <div key={result.id} className="detail-item stacked">
+              <div className="detail-row">
+                <strong>{result.linked_tool_name ?? "Manual validation"}</strong>
+                <div className="workspace-badges">
+                  <span className="count-chip">{formatTestStatus(result.test_status)}</span>
+                  <button type="button" className="panel-close-button" onClick={() => void handleDeleteTestResult(result.id)}>
+                    Delete
+                  </button>
                 </div>
-                <p className="muted">
-                  {contribution.toolName} | {contribution.toolTypes.map((t) => TOOL_TYPE_LABEL[t]).join(", ")} | default{" "}
-                  {contribution.configuredEffectDefault} | effective {contribution.controlEffect} ({contribution.controlEffectSource}) |{" "}
-                  {contribution.implementationLevel} implementation | {contribution.confidenceLevel} confidence | {contribution.mappingCoverage} mapping
-                  {contribution.configurationStatus ? ` | config ${contribution.configurationStatus}` : ""}
-                </p>
-                {contribution.dependencyWarnings.length > 0 ? (
-                  <p className="muted">{contribution.dependencyWarnings.join(" | ")}</p>
-                ) : null}
               </div>
-            ))}
+              <p className="muted">{result.last_tested_at || "No date"} | {result.notes || "No notes"}</p>
+            </div>
+          ))}
+        </div>
+
+        <form className="technique-test-form" onSubmit={handleCreateTestResult}>
+          <div className="workspace-field">
+            <label htmlFor="test-status">Test status</label>
+            <select id="test-status" value={testStatus} onChange={(event) => setTestStatus(event.target.value as TestStatus)}>
+              <option value="not_tested">Not tested</option>
+              <option value="passed">Passed</option>
+              <option value="partial">Partial</option>
+              <option value="failed">Failed</option>
+              <option value="detected_not_blocked">Detected not blocked</option>
+            </select>
           </div>
-        )}
+          <div className="workspace-field">
+            <label htmlFor="linked-tool">Linked tool</label>
+            <select id="linked-tool" value={linkedToolId} onChange={(event) => setLinkedToolId(event.target.value)}>
+              <option value="none">No linked tool</option>
+              {validationTools.map((tool) => (
+                <option key={tool.id} value={tool.id}>
+                  {tool.name}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="workspace-field">
+            <label htmlFor="last-tested">Last tested</label>
+            <input id="last-tested" type="datetime-local" value={lastTestedAt} onChange={(event) => setLastTestedAt(event.target.value)} />
+          </div>
+          <div className="workspace-field">
+            <label htmlFor="test-notes">Notes</label>
+            <textarea id="test-notes" value={notes} onChange={(event) => setNotes(event.target.value)} rows={3} />
+          </div>
+          {error ? <p className="error-text">{error}</p> : null}
+          <button type="submit" className="secondary-button" disabled={isSaving}>
+            {isSaving ? "Saving..." : "Save test result"}
+          </button>
+        </form>
       </div>
     </aside>
   );
+}
+
+function formatTestStatus(value: string) {
+  return value.replace(/_/g, " ");
 }

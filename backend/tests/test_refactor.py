@@ -1231,6 +1231,68 @@ class DefenseGraphConfidenceTests(unittest.TestCase):
             except PermissionError:
                 pass
 
+    def test_coverage_exposes_theoretical_real_and_not_tested_defaults(self):
+        tool = self._create_tool("Edge WAF", "Application & API Security (WAF / WAAP)")
+        capability = self._find_capability("CAP-031")
+        self._assign_capability(tool["id"], capability["id"], "prevent", "full")
+
+        row = self._coverage_row("T1190")
+
+        self.assertEqual(row["theoretical_effect"], "prevent")
+        self.assertEqual(row["real_effect"], "none")
+        self.assertEqual(row["test_status"], "not_tested")
+        self.assertTrue(row["is_gap_unconfigured_control"])
+
+    def test_manual_test_result_updates_coverage_and_gap_state(self):
+        tool = self._create_tool("Identity Sensor", "Identity")
+        capability = self._find_capability("CAP-128")
+        self._assign_capability(tool["id"], capability["id"], "detect", "full")
+        self._set_scopes(tool["id"], capability["id"], [("identity", "full", "Identity covered")])
+
+        technique_id = self._coverage_row("T1550")["technique_id"]
+        create_response = self.client.post(
+            f"/techniques/{technique_id}/test-results",
+            json={
+                "linked_tool_id": tool["id"],
+                "test_status": "detected_not_blocked",
+                "last_tested_at": "2026-04-16T09:00:00",
+                "notes": "Simulation confirmed detection only",
+            },
+        )
+        self.assertEqual(create_response.status_code, 201)
+
+        row = self._coverage_row("T1550")
+        self.assertEqual(row["test_status"], "detected_not_blocked")
+        self.assertTrue(row["is_gap_detected_not_blocked"])
+        self.assertEqual(row["test_results"][0]["linked_tool_id"], tool["id"])
+
+    def test_dashboard_snapshot_and_reports_use_current_coverage(self):
+        tool = self._create_tool("Proxy", "SASE / SSE (SWG / ZTNA / CASB)")
+        capability = self._find_capability("CAP-005")
+        self._assign_capability(tool["id"], capability["id"], "block", "full")
+        self._set_scopes(tool["id"], capability["id"], [("endpoint_user_device", "full", "Endpoint path covered")])
+
+        summary_response = self.client.get("/dashboard/summary")
+        self.assertEqual(summary_response.status_code, 200)
+        summary = summary_response.json()
+        self.assertIn("real_coverage_pct", summary)
+        self.assertIn("critical_gap_count", summary)
+
+        snapshot_response = self.client.post("/dashboard/snapshots", json={"name": "Baseline"})
+        self.assertEqual(snapshot_response.status_code, 201)
+        self.assertEqual(snapshot_response.json()["name"], "Baseline")
+
+        executive_report = self.client.get("/reports/executive")
+        technical_report = self.client.get("/reports/technical")
+        gaps_csv = self.client.get("/reports/gaps.csv")
+
+        self.assertEqual(executive_report.status_code, 200)
+        self.assertEqual(technical_report.status_code, 200)
+        self.assertTrue(executive_report.content.startswith(b"%PDF"))
+        self.assertTrue(technical_report.content.startswith(b"%PDF"))
+        self.assertEqual(gaps_csv.status_code, 200)
+        self.assertIn("technique_code", gaps_csv.text)
+
 
 if __name__ == "__main__":
     unittest.main()
