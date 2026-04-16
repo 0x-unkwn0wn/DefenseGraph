@@ -202,7 +202,10 @@ export function CoveragePage({
     activeView === "coverage"
       ? filterTechniqueStates(
           coverageTechniqueStates.filter(
-            (technique) => showExtendedTechniques || technique.display_group === "core",
+            (technique) =>
+              showExtendedTechniques ||
+              technique.display_group === "core" ||
+              !technique.has_capability_mappings,
           ),
           selectedCoverage,
           showOnlyCriticalGaps,
@@ -233,7 +236,10 @@ export function CoveragePage({
   }, [selectedTechniqueCode, visibleTechniques]);
 
   const coverageCounters = buildCounters(
-    uniqueCoverageTechniqueStates.filter((technique) => showExtendedTechniques || technique.display_group === "core"),
+    uniqueCoverageTechniqueStates.filter(
+      (technique) =>
+        showExtendedTechniques || technique.display_group === "core" || !technique.has_capability_mappings,
+    ),
   );
   const gapCategoryCounts = useMemo(
     () =>
