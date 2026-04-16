@@ -218,7 +218,12 @@ export function TechniqueDetailPanel({ technique, tools = [], onClose, onRefresh
         <form className="technique-test-form" onSubmit={handleCreateTestResult}>
           <div className="workspace-field">
             <label htmlFor="test-status">Test status</label>
-            <select id="test-status" value={testStatus} onChange={(event) => setTestStatus(event.target.value as TestStatus)}>
+            <select
+              id="test-status"
+              className="level-select"
+              value={testStatus}
+              onChange={(event) => setTestStatus(event.target.value as TestStatus)}
+            >
               <option value="not_tested">Not tested</option>
               <option value="passed">Passed</option>
               <option value="partial">Partial</option>
@@ -228,7 +233,12 @@ export function TechniqueDetailPanel({ technique, tools = [], onClose, onRefresh
           </div>
           <div className="workspace-field">
             <label htmlFor="linked-tool">Linked tool</label>
-            <select id="linked-tool" value={linkedToolId} onChange={(event) => setLinkedToolId(event.target.value)}>
+            <select
+              id="linked-tool"
+              className="level-select"
+              value={linkedToolId}
+              onChange={(event) => setLinkedToolId(event.target.value)}
+            >
               <option value="none">No linked tool</option>
               {validationTools.map((tool) => (
                 <option key={tool.id} value={tool.id}>
@@ -239,16 +249,30 @@ export function TechniqueDetailPanel({ technique, tools = [], onClose, onRefresh
           </div>
           <div className="workspace-field">
             <label htmlFor="last-tested">Last tested</label>
-            <input id="last-tested" type="datetime-local" value={lastTestedAt} onChange={(event) => setLastTestedAt(event.target.value)} />
+            <input
+              id="last-tested"
+              className="text-input"
+              type="datetime-local"
+              value={lastTestedAt}
+              onChange={(event) => setLastTestedAt(event.target.value)}
+            />
           </div>
-          <div className="workspace-field">
+          <div className="workspace-field workspace-field--full">
             <label htmlFor="test-notes">Notes</label>
-            <textarea id="test-notes" value={notes} onChange={(event) => setNotes(event.target.value)} rows={3} />
+            <textarea
+              id="test-notes"
+              className="text-area"
+              value={notes}
+              onChange={(event) => setNotes(event.target.value)}
+              rows={3}
+            />
           </div>
-          {error ? <p className="error-text">{error}</p> : null}
-          <button type="submit" className="secondary-button" disabled={isSaving}>
-            {isSaving ? "Saving..." : "Save test result"}
-          </button>
+          <div className="technique-test-actions">
+            {error ? <p className="error-text">{error}</p> : <span className="muted">Add an optional tested result for this technique.</span>}
+            <button type="submit" className="secondary-button" disabled={isSaving}>
+              {isSaving ? "Saving..." : "Save test result"}
+            </button>
+          </div>
         </form>
       </div>
     </aside>

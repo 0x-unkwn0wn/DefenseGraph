@@ -1935,8 +1935,46 @@ button {
 
 .technique-test-form {
   margin-top: 1rem;
-  padding-top: 1rem;
-  border-top: 1px solid var(--border-color);
+  padding: 12px;
+  border: 1px solid var(--border);
+  background: #0d1218;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-items: start;
+}
+
+.technique-test-form .workspace-field {
+  display: grid;
+  gap: 6px;
+}
+
+.technique-test-form .workspace-field label {
+  color: var(--text-dim);
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.technique-test-form .workspace-field--full,
+.technique-test-actions {
+  grid-column: 1 / -1;
+}
+
+.technique-test-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding-top: 4px;
+}
+
+.technique-test-actions .muted,
+.technique-test-actions .error-text {
+  margin: 0;
+}
+
+.technique-test-form .text-area {
+  min-height: 96px;
 }
 
 .workspace-field textarea,
@@ -1956,5 +1994,14 @@ button {
 
   .dashboard-scope-row {
     grid-template-columns: 1fr;
+  }
+
+  .technique-test-form {
+    grid-template-columns: 1fr;
+  }
+
+  .technique-test-actions {
+    flex-direction: column;
+    align-items: stretch;
   }
 }
