@@ -326,8 +326,16 @@ def serialize_capability_read(capability: Capability) -> CapabilityRead:
                 technique_id=entry.technique_id,
                 technique_code=entry.technique.code,
                 technique_name=entry.technique.name,
-                attack_url=f"https://attack.mitre.org/techniques/{entry.technique.code.replace('.', '/')}/",
+                attack_url=(
+                    entry.technique.attack_url
+                    or f"https://attack.mitre.org/techniques/{entry.technique.code.replace('.', '/')}/"
+                ),
                 coverage=entry.coverage,
+                technique_tactics=list(entry.technique.tactics or []),
+                technique_domain=entry.technique.domain,
+                display_group=entry.technique.display_group,
+                is_subtechnique=entry.technique.is_subtechnique,
+                parent_technique_code=entry.technique.parent_code,
             )
             for entry in structural_maps
         ],
@@ -564,8 +572,16 @@ def serialize_capability_detail(capability: Capability) -> CapabilityDetailRead:
                 technique_id=entry.technique_id,
                 technique_code=entry.technique.code,
                 technique_name=entry.technique.name,
-                attack_url=f"https://attack.mitre.org/techniques/{entry.technique.code.replace('.', '/')}/",
+                attack_url=(
+                    entry.technique.attack_url
+                    or f"https://attack.mitre.org/techniques/{entry.technique.code.replace('.', '/')}/"
+                ),
                 coverage=entry.coverage,
+                technique_tactics=list(entry.technique.tactics or []),
+                technique_domain=entry.technique.domain,
+                display_group=entry.technique.display_group,
+                is_subtechnique=entry.technique.is_subtechnique,
+                parent_technique_code=entry.technique.parent_code,
             )
             for entry in structural_maps
         ],

@@ -1,4 +1,4 @@
-import { coreTechniqueCodes, extendedTechniqueCodes, tacticOrder, techniqueDisplayGroups, techniqueTactics } from "./attackConfig";
+import { legacyTechniqueDisplayGroups, legacyTechniqueTactics, tacticOrder } from "./attackConfig";
 import type {
   CapabilityContribution,
   ConfidenceLevel,
@@ -38,9 +38,11 @@ export function buildTechniqueStates({
   selectedToolId,
 }: BuildTechniqueStateArgs): DerivedTechnique[] {
   return coverageRows
-    .map((row) => {
-      const tactic = techniqueTactics[row.technique_code] ?? "Execution";
-      const displayGroup = techniqueDisplayGroups[row.technique_code] ?? "extended";
+    .flatMap((row) => {
+      const tactics = row.tactics?.length
+        ? row.tactics
+        : [row.primary_tactic ?? legacyTechniqueTactics[row.technique_code] ?? "Execution"];
+      const displayGroup = row.display_group ?? legacyTechniqueDisplayGroups[row.technique_code] ?? "extended";
       const allContributions = mapCoverageContributions(row);
       const hasCapabilityMappings = row.has_capability_mappings ?? true;
       const localCoverage =
@@ -48,7 +50,7 @@ export function buildTechniqueStates({
           ? summarizeCoverage(allContributions, row.response_actions, row.relevant_scopes, hasCapabilityMappings)
           : summarizeCoverageForSelectedTool(row, selectedToolId);
 
-      return {
+      return tactics.map<DerivedTechnique>((tactic) => ({
         ...row,
         ...localCoverage,
         technique_id: row.technique_id,
@@ -56,6 +58,17 @@ export function buildTechniqueStates({
         technique_name: row.technique_name,
         // Preserve API-sourced fields that localCoverage would overwrite with defaults.
         attack_url: row.attack_url,
+        attack_domain: row.attack_domain ?? "enterprise-attack",
+        description: row.description ?? "",
+        tactics,
+        primary_tactic: row.primary_tactic ?? tactics[0] ?? tactic,
+        platforms: row.platforms ?? [],
+        attack_stix_id: row.attack_stix_id ?? null,
+        attack_version: row.attack_version ?? null,
+        parent_technique_code: row.parent_technique_code ?? null,
+        is_subtechnique: row.is_subtechnique ?? false,
+        revoked: row.revoked ?? false,
+        deprecated: row.deprecated ?? false,
         has_capability_mappings: hasCapabilityMappings,
         mapped_capability_count: row.mapped_capability_count ?? 0,
         theoretical_effect: localCoverage.theoretical_effect,
@@ -83,10 +96,14 @@ export function buildTechniqueStates({
         tactic,
         display_group: displayGroup,
         contributions: localCoverage.contributions,
-      };
+      }));
     })
     .sort((left, right) => {
-      const tacticDelta = tacticOrder.indexOf(left.tactic) - tacticOrder.indexOf(right.tactic);
+      const leftTacticIndex = tacticOrder.indexOf(left.tactic);
+      const rightTacticIndex = tacticOrder.indexOf(right.tactic);
+      const tacticDelta =
+        (leftTacticIndex === -1 ? tacticOrder.length : leftTacticIndex) -
+        (rightTacticIndex === -1 ? tacticOrder.length : rightTacticIndex);
       if (tacticDelta !== 0) {
         return tacticDelta;
       }
@@ -335,14 +352,17 @@ export function buildCounters(techniques: DerivedTechnique[]) {
 }
 
 export function buildDisplayGroupCounters(techniques: DerivedTechnique[]) {
-  const coreTechniques = techniques.filter((technique) => technique.display_group === "core");
-  const extendedTechniques = techniques.filter((technique) => technique.display_group === "extended");
+  const uniqueTechniques = Array.from(
+    new Map(techniques.map((technique) => [technique.technique_code, technique])).values(),
+  );
+  const coreTechniques = uniqueTechniques.filter((technique) => technique.display_group === "core");
+  const extendedTechniques = uniqueTechniques.filter((technique) => technique.display_group === "extended");
 
   return {
-    coreTotal: coreTechniqueCodes.length,
+    coreTotal: coreTechniques.length,
     coreCovered: coreTechniques.filter((technique) => technique.coverage_type !== "none").length,
     coreGaps: coreTechniques.filter((technique) => isGap(technique)).length,
-    extendedTotal: extendedTechniqueCodes.length,
+    extendedTotal: extendedTechniques.length,
     extendedCovered: extendedTechniques.filter((technique) => technique.coverage_type !== "none").length,
     extendedGaps: extendedTechniques.filter((technique) => isGap(technique)).length,
   };

@@ -55,16 +55,7 @@ export type RequirementLevel = "required" | "recommended";
 export type ConfigurationStatus = "unknown" | "not_enabled" | "partially_enabled" | "enabled";
 export type ScopeStatus = "none" | "partial" | "full";
 export type ScopeRelevance = "primary" | "secondary";
-export type TacticName =
-  | "Initial Access"
-  | "Execution"
-  | "Persistence / Privilege Escalation / Defense Evasion"
-  | "Credential Access"
-  | "Discovery"
-  | "Lateral Movement"
-  | "Command & Control"
-  | "Collection / Exfiltration"
-  | "Impact";
+export type TacticName = string;
 
 export interface Capability {
   id: number;
@@ -289,6 +280,11 @@ export interface CapabilityTechniqueLink {
   technique_name: string;
   attack_url: string;
   coverage: MappingCoverage;
+  technique_tactics?: string[];
+  technique_domain?: string;
+  display_group?: TechniqueDisplayGroup;
+  is_subtechnique?: boolean;
+  parent_technique_code?: string | null;
 }
 
 export interface CapabilityDetail {
@@ -419,6 +415,18 @@ export interface TechniqueCoverage {
   technique_name: string;
   /** Direct link to the MITRE ATT&CK page for this technique. */
   attack_url: string;
+  attack_domain?: string;
+  description?: string;
+  tactics?: string[];
+  primary_tactic?: string;
+  platforms?: string[];
+  attack_stix_id?: string | null;
+  attack_version?: string | null;
+  parent_technique_code?: string | null;
+  is_subtechnique?: boolean;
+  display_group?: TechniqueDisplayGroup;
+  revoked?: boolean;
+  deprecated?: boolean;
   has_capability_mappings?: boolean;
   mapped_capability_count?: number;
   theoretical_effect?: CoverageType;

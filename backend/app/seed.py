@@ -23,6 +23,7 @@ from app.models import (
     ToolCapabilityTemplate,
     Vendor,
 )
+from app.services.attack_import import build_local_attack_technique
 from app.tool_categories import normalize_tool_category
 
 
@@ -1089,7 +1090,12 @@ EXTENDED_TECHNIQUE_CODES = [
 ]
 
 TECHNIQUES = [
-    {"code": technique["code"], "name": technique["name"]}
+    build_local_attack_technique(
+        code=technique["code"],
+        name=technique["name"],
+        tactic=technique["tactic"],
+        display_group="core" if technique["code"] in CORE_TECHNIQUE_CODES else "extended",
+    )
     for technique in ATTACK_TECHNIQUE_CATALOG
 ]
 

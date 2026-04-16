@@ -22,6 +22,7 @@ SCOPE_LABELS = {
 
 def build_dashboard_summary(rows: list[TechniqueCoverageRead]) -> DashboardSummaryRead:
     total = len(rows) or 1
+    mapped_rows = [row for row in rows if row.has_capability_mappings]
     return DashboardSummaryRead(
         total_techniques=len(rows),
         theoretical_coverage_pct=_pct(sum(1 for row in rows if row.theoretical_effect != "none"), total),
@@ -29,18 +30,23 @@ def build_dashboard_summary(rows: list[TechniqueCoverageRead]) -> DashboardSumma
         tested_coverage_pct=_pct(sum(1 for row in rows if row.test_status != "not_tested"), total),
         critical_gap_count=sum(
             1
-            for row in rows
+            for row in mapped_rows
             if row.real_effect == "none" or row.test_status == "failed" or row.is_gap_scope_missing
         ),
-        detect_only_count=sum(1 for row in rows if row.best_effect == "detect" and set(row.available_effects) <= {"detect"}),
+        detect_only_count=sum(
+            1 for row in mapped_rows if row.best_effect == "detect" and set(row.available_effects) <= {"detect"}
+        ),
         low_confidence_count=sum(
-            1 for row in rows if row.real_effect != "none" and row.confidence_level == "low"
+            1 for row in mapped_rows if row.real_effect != "none" and row.confidence_level == "low"
         ),
     )
 
 
 def build_top_risks(rows: list[TechniqueCoverageRead], limit: int = 10) -> list[DashboardTopRiskRead]:
-    ranked = sorted(((_risk_score(row), row) for row in rows if _risk_score(row) > 0), key=lambda item: (-item[0], item[1].technique_code))
+    ranked = sorted(
+        ((_risk_score(row), row) for row in rows if row.has_capability_mappings and _risk_score(row) > 0),
+        key=lambda item: (-item[0], item[1].technique_code),
+    )
     result: list[DashboardTopRiskRead] = []
     for score, row in ranked[:limit]:
         severity = "critical" if score >= 90 else "high" if score >= 60 else "medium"
@@ -78,7 +84,8 @@ def build_domain_breakdown(rows: list[TechniqueCoverageRead]) -> list[DashboardD
                 critical_gap_count=sum(
                     1
                     for row in domain_rows
-                    if row.real_effect == "none" or row.test_status == "failed" or row.is_gap_scope_missing
+                    if row.has_capability_mappings
+                    and (row.real_effect == "none" or row.test_status == "failed" or row.is_gap_scope_missing)
                 ),
             )
         )

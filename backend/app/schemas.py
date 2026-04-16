@@ -90,6 +90,7 @@ BASResult = Literal["blocked", "detected", "not_detected", "not_tested"]
 ToolTag = str
 TemplatePriority = Literal["core", "secondary", "niche"]
 SuggestionGroup = Literal["core", "recommended", "optional"]
+TechniqueDisplayGroup = Literal["core", "extended"]
 IngestionStatus = Literal["none", "partial", "full"]
 RequirementLevel = Literal["required", "recommended"]
 EffectiveOutcome = Literal["none", "detect", "detect_with_response", "block", "prevent"]
@@ -182,6 +183,11 @@ class CapabilityTechniqueMapRead(BaseModel):
     technique_name: str
     attack_url: str
     coverage: MappingCoverage
+    technique_tactics: list[str] = []
+    technique_domain: str = "enterprise-attack"
+    display_group: TechniqueDisplayGroup = "extended"
+    is_subtechnique: bool = False
+    parent_technique_code: str | None = None
 
 
 class TechniqueRelevantScopeRead(BaseModel):
@@ -660,6 +666,18 @@ class TechniqueCoverageRead(BaseModel):
     technique_name: str
     # Direct link to the MITRE ATT&CK page for this technique.
     attack_url: str
+    attack_domain: str = "enterprise-attack"
+    description: str = ""
+    tactics: list[str] = []
+    primary_tactic: str = "Execution"
+    platforms: list[str] = []
+    attack_stix_id: str | None = None
+    attack_version: str | None = None
+    parent_technique_code: str | None = None
+    is_subtechnique: bool = False
+    display_group: TechniqueDisplayGroup = "extended"
+    revoked: bool = False
+    deprecated: bool = False
     has_capability_mappings: bool = True
     mapped_capability_count: int = 0
     theoretical_effect: CoverageType

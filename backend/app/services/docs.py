@@ -40,8 +40,16 @@ def _serialize_capability(capability: Capability) -> CapabilityRead:
                 technique_id=mapping.technique_id,
                 technique_code=mapping.technique.code,
                 technique_name=mapping.technique.name,
-                attack_url=f"https://attack.mitre.org/techniques/{mapping.technique.code.replace('.', '/')}/",
+                attack_url=(
+                    mapping.technique.attack_url
+                    or f"https://attack.mitre.org/techniques/{mapping.technique.code.replace('.', '/')}/"
+                ),
                 coverage=mapping.coverage,
+                technique_tactics=list(mapping.technique.tactics or []),
+                technique_domain=mapping.technique.domain,
+                display_group=mapping.technique.display_group,
+                is_subtechnique=mapping.technique.is_subtechnique,
+                parent_technique_code=mapping.technique.parent_code,
             )
             for mapping in structural_maps
         ],

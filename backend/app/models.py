@@ -1,4 +1,4 @@
-from sqlalchemy import JSON, ForeignKey, ForeignKeyConstraint, Integer, String, Text, UniqueConstraint
+from sqlalchemy import JSON, Boolean, ForeignKey, ForeignKeyConstraint, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
@@ -80,6 +80,18 @@ class Technique(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
     code: Mapped[str] = mapped_column(String(50), unique=True, nullable=False)
     name: Mapped[str] = mapped_column(String(255), nullable=False)
+    domain: Mapped[str] = mapped_column(String(50), nullable=False, default="enterprise-attack")
+    description: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    attack_url: Mapped[str] = mapped_column(String(255), nullable=False, default="")
+    tactics: Mapped[list[str]] = mapped_column(JSON, nullable=False, default=list)
+    platforms: Mapped[list[str]] = mapped_column(JSON, nullable=False, default=list)
+    attack_stix_id: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    attack_version: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    parent_code: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    is_subtechnique: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    display_group: Mapped[str] = mapped_column(String(20), nullable=False, default="extended")
+    revoked: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    deprecated: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
 
     capability_maps = relationship("CapabilityTechniqueMap", back_populates="technique", cascade="all, delete-orphan")
     relevant_scopes = relationship(

@@ -177,9 +177,13 @@ export function CoveragePage({
     tools,
     selectedToolId,
   });
+  const uniqueTechniqueStates = useMemo(
+    () => Array.from(new Map(techniqueStates.map((technique) => [technique.technique_code, technique])).values()),
+    [techniqueStates],
+  );
   const toolOptions = buildToolOptions(tools);
   const scopeOptions = buildScopeOptions(coverage);
-  const groupCounters = buildDisplayGroupCounters(techniqueStates);
+  const groupCounters = buildDisplayGroupCounters(uniqueTechniqueStates);
 
   const visibleTechniques =
     activeView === "coverage"
@@ -216,17 +220,17 @@ export function CoveragePage({
   }, [selectedTechniqueCode, visibleTechniques]);
 
   const coverageCounters = buildCounters(
-    techniqueStates.filter((technique) => showExtendedTechniques || technique.display_group === "core"),
+    uniqueTechniqueStates.filter((technique) => showExtendedTechniques || technique.display_group === "core"),
   );
   const gapCategoryCounts = useMemo(
     () =>
       Object.fromEntries(
         gapCategoryDefinitions.map((category) => [
           category.key,
-          techniqueStates.filter((technique) => category.matches(technique)).length,
+          uniqueTechniqueStates.filter((technique) => category.matches(technique)).length,
         ]),
       ) as Record<GapCategoryKey, number>,
-    [techniqueStates],
+    [uniqueTechniqueStates],
   );
 
   function handleSelectTechnique(technique: DerivedTechnique) {

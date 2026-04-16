@@ -31,6 +31,9 @@ export function TechniqueDetailPanel({ technique, tools = [], onClose, onRefresh
   }
 
   const currentTechnique = technique;
+  const techniqueTactics = currentTechnique.tactics?.length
+    ? currentTechnique.tactics
+    : [currentTechnique.tactic];
   const validationTools = tools.filter((tool) => tool.tool_types.includes("validated") || tool.tool_types.includes("assurance"));
   const currentTestStatus = currentTechnique.test_status ?? "not_tested";
   const testResults = currentTechnique.test_results ?? [];
@@ -97,9 +100,15 @@ export function TechniqueDetailPanel({ technique, tools = [], onClose, onRefresh
           </a>
         </div>
         <div className="detail-kv">
-          <span className="detail-label">Tactic</span>
-          <strong>{currentTechnique.tactic}</strong>
+          <span className="detail-label">Tactics</span>
+          <strong>{techniqueTactics.join(" | ")}</strong>
         </div>
+        {currentTechnique.parent_technique_code ? (
+          <div className="detail-kv">
+            <span className="detail-label">Parent technique</span>
+            <strong>{currentTechnique.parent_technique_code}</strong>
+          </div>
+        ) : null}
         <div className="detail-kv">
           <span className="detail-label">Model status</span>
           <strong>{currentTechnique.has_capability_mappings === false ? "Unmapped" : `${currentTechnique.mapped_capability_count ?? 0} capability mappings`}</strong>
@@ -109,6 +118,12 @@ export function TechniqueDetailPanel({ technique, tools = [], onClose, onRefresh
           <span className={`coverage-pill ${currentTechnique.confidence_level}`}>{currentTechnique.confidence_level}</span>
         </div>
       </div>
+
+      {currentTechnique.description ? (
+        <div className="detail-panel-section">
+          <p className="muted">{currentTechnique.description}</p>
+        </div>
+      ) : null}
 
       {currentTechnique.has_capability_mappings === false ? (
         <div className="detail-panel-section">

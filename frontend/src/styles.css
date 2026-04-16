@@ -988,9 +988,7 @@ button {
 
 .matrix-grid {
   display: grid;
-  grid-template-columns: repeat(9, minmax(200px, 1fr));
   gap: 6px;
-  min-width: 1820px;
   padding: 6px;
 }
 
@@ -1051,6 +1049,21 @@ button {
   font-size: 0.76rem;
 }
 
+.matrix-technique-group {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.matrix-subtechniques {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-left: 12px;
+  padding-left: 8px;
+  border-left: 1px solid rgba(88, 100, 116, 0.5);
+}
+
 .matrix-cell {
   position: relative;
   display: grid;
@@ -1104,6 +1117,10 @@ button {
 .matrix-cell.unmapped-model {
   border-style: dashed;
   border-color: #586474;
+}
+
+.matrix-cell.subtechnique {
+  min-height: 84px;
 }
 
 .matrix-cell.gap-critical {

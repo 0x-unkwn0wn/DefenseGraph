@@ -289,6 +289,7 @@ def _schema_is_current(connection: sqlite3.Connection) -> bool:
     tool_columns = _get_table_columns(connection, "tools")
     capability_columns = _get_table_columns(connection, "capabilities")
     tool_capability_columns = _get_table_columns(connection, "tool_capabilities")
+    technique_columns = _get_table_columns(connection, "techniques")
 
     return (
         "vendor_id" in tool_columns
@@ -305,6 +306,20 @@ def _schema_is_current(connection: sqlite3.Connection) -> bool:
             "configuration_profile_type",
         }.issubset(capability_columns)
         and {"id", "control_effect_default", "confidence_source", "confidence_level"}.issubset(tool_capability_columns)
+        and {
+            "domain",
+            "description",
+            "attack_url",
+            "tactics",
+            "platforms",
+            "attack_stix_id",
+            "attack_version",
+            "parent_code",
+            "is_subtechnique",
+            "display_group",
+            "revoked",
+            "deprecated",
+        }.issubset(technique_columns)
         and {"optional_tags", "priority"}.issubset(_get_table_columns(connection, "tool_capability_templates"))
         and {"bas_result", "technique_id", "last_validation_date"}.issubset(_get_table_columns(connection, "bas_validations"))
     )

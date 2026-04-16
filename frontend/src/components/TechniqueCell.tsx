@@ -3,10 +3,11 @@ import type { DerivedTechnique } from "../types";
 interface TechniqueCellProps {
   technique: DerivedTechnique;
   isActive: boolean;
+  isSubtechnique?: boolean;
   onSelect: (technique: DerivedTechnique) => void;
 }
 
-export function TechniqueCell({ technique, isActive, onSelect }: TechniqueCellProps) {
+export function TechniqueCell({ technique, isActive, isSubtechnique = false, onSelect }: TechniqueCellProps) {
   const isUnmapped = technique.has_capability_mappings === false;
   const testStatus = technique.test_status ?? "not_tested";
   const gapClass =
@@ -29,6 +30,7 @@ export function TechniqueCell({ technique, isActive, onSelect }: TechniqueCellPr
         technique.is_gap_unconfigured_control ? "unconfigured-control" : "",
         technique.is_gap_partially_configured_control ? "partially-configured-control" : "",
         isUnmapped ? "unmapped-model" : "",
+        isSubtechnique ? "subtechnique" : "",
         gapClass,
         isActive ? "active" : "",
       ]
@@ -43,7 +45,7 @@ export function TechniqueCell({ technique, isActive, onSelect }: TechniqueCellPr
       </div>
       <strong className="matrix-cell-title">{technique.technique_name}</strong>
       <span className="matrix-cell-meta">
-        {technique.tool_count} {technique.tool_count === 1 ? "tool" : "tools"}
+        {isSubtechnique ? "sub-technique" : `${technique.tool_count} ${technique.tool_count === 1 ? "tool" : "tools"}`}
       </span>
       <span className="matrix-cell-flags">
         {isUnmapped ? <span className="cell-flag">unmapped</span> : null}
