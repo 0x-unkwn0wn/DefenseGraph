@@ -122,6 +122,7 @@ class CapabilityRead(BaseModel):
     code: str
     name: str
     domain: str
+    family: str
     description: str
     requires_data_sources: bool
     supported_by_analytics: bool

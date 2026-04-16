@@ -184,7 +184,9 @@ describe("CoveragePage", () => {
     expect(screen.queryByText("Unmapped Technique")).not.toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "coverage" }));
+    expect(screen.queryByText("Unmapped Technique")).not.toBeInTheDocument();
     await user.click(screen.getByLabelText(/show extended techniques/i));
+    await user.click(screen.getByLabelText(/include unmapped att&ck/i));
     await user.click(screen.getByRole("button", { name: /T9000/i }));
 
     expect(screen.getByText("Unmapped")).toBeInTheDocument();

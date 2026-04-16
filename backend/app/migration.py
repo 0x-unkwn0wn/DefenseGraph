@@ -299,6 +299,7 @@ def _schema_is_current(connection: sqlite3.Connection) -> bool:
         and "tags" in tool_columns
         and {
             "description",
+            "family",
             "requires_data_sources",
             "supported_by_analytics",
             "supported_by_response",

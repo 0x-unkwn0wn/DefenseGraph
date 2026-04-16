@@ -311,6 +311,7 @@ def serialize_capability_read(capability: Capability) -> CapabilityRead:
         code=capability.code,
         name=capability.name,
         domain=capability.domain,
+        family=capability.family,
         description=capability.description,
         requires_data_sources=capability.requires_data_sources,
         supported_by_analytics=capability.supported_by_analytics,

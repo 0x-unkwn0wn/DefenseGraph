@@ -164,6 +164,7 @@ export function CoveragePage({
   const [selectedScope, setSelectedScope] = useState<string>("all");
   const [showOnlyCriticalGaps, setShowOnlyCriticalGaps] = useState(false);
   const [showExtendedTechniques, setShowExtendedTechniques] = useState(false);
+  const [showUnmappedTechniques, setShowUnmappedTechniques] = useState(false);
   const [selectedDisplayGroup, setSelectedDisplayGroup] = useState<TechniqueDisplayGroup | "all">("all");
   const [selectedGapCategories, setSelectedGapCategories] = useState<GapCategoryKey[]>(allGapCategoryKeys);
   const [selectedTechniqueCode, setSelectedTechniqueCode] = useState<string | null>(null);
@@ -181,14 +182,26 @@ export function CoveragePage({
     () => Array.from(new Map(techniqueStates.map((technique) => [technique.technique_code, technique])).values()),
     [techniqueStates],
   );
+  const mappedTechniqueStates = useMemo(
+    () => techniqueStates.filter((technique) => technique.has_capability_mappings !== false),
+    [techniqueStates],
+  );
+  const uniqueMappedTechniqueStates = useMemo(
+    () => Array.from(new Map(mappedTechniqueStates.map((technique) => [technique.technique_code, technique])).values()),
+    [mappedTechniqueStates],
+  );
+  const coverageTechniqueStates = showUnmappedTechniques ? techniqueStates : mappedTechniqueStates;
+  const uniqueCoverageTechniqueStates = showUnmappedTechniques
+    ? uniqueTechniqueStates
+    : uniqueMappedTechniqueStates;
   const toolOptions = buildToolOptions(tools);
   const scopeOptions = buildScopeOptions(coverage);
-  const groupCounters = buildDisplayGroupCounters(uniqueTechniqueStates);
+  const groupCounters = buildDisplayGroupCounters(uniqueCoverageTechniqueStates);
 
   const visibleTechniques =
     activeView === "coverage"
       ? filterTechniqueStates(
-          techniqueStates.filter(
+          coverageTechniqueStates.filter(
             (technique) => showExtendedTechniques || technique.display_group === "core",
           ),
           selectedCoverage,
@@ -220,17 +233,17 @@ export function CoveragePage({
   }, [selectedTechniqueCode, visibleTechniques]);
 
   const coverageCounters = buildCounters(
-    uniqueTechniqueStates.filter((technique) => showExtendedTechniques || technique.display_group === "core"),
+    uniqueCoverageTechniqueStates.filter((technique) => showExtendedTechniques || technique.display_group === "core"),
   );
   const gapCategoryCounts = useMemo(
     () =>
       Object.fromEntries(
         gapCategoryDefinitions.map((category) => [
           category.key,
-          uniqueTechniqueStates.filter((technique) => category.matches(technique)).length,
+          uniqueMappedTechniqueStates.filter((technique) => category.matches(technique)).length,
         ]),
       ) as Record<GapCategoryKey, number>,
-    [uniqueTechniqueStates],
+    [uniqueMappedTechniqueStates],
   );
 
   function handleSelectTechnique(technique: DerivedTechnique) {
@@ -304,7 +317,15 @@ export function CoveragePage({
         {activeView === "coverage" ? (
           <div className="counter-grid">
             <div className="counter-card">
-              <span>{showExtendedTechniques ? "Visible techniques" : "Core techniques"}</span>
+              <span>
+                {showExtendedTechniques
+                  ? showUnmappedTechniques
+                    ? "Visible techniques"
+                    : "Mapped techniques"
+                  : showUnmappedTechniques
+                    ? "Core techniques"
+                    : "Mapped core techniques"}
+              </span>
               <strong>{coverageCounters.total}</strong>
             </div>
             <div className="counter-card">
@@ -418,6 +439,15 @@ export function CoveragePage({
                     onChange={(event) => setShowExtendedTechniques(event.target.checked)}
                   />
                   <span>Show extended techniques</span>
+                </label>
+
+                <label className="filter-toggle">
+                  <input
+                    type="checkbox"
+                    checked={showUnmappedTechniques}
+                    onChange={(event) => setShowUnmappedTechniques(event.target.checked)}
+                  />
+                  <span>Include unmapped ATT&CK</span>
                 </label>
               </>
             ) : (
@@ -563,8 +593,12 @@ export function CoveragePage({
                 ? showOnlyCriticalGaps
                   ? "Showing only techniques with no effective coverage. Detect-only and partial techniques are hidden in this mode."
                   : showExtendedTechniques
-                    ? "Showing Core and Extended techniques. Switch to Gaps view for gap-first analysis without leaving the workspace."
-                    : "Showing Core techniques by default. Enable Extended or switch to Gaps for a weakness-first analysis."
+                    ? showUnmappedTechniques
+                      ? "Showing the full ATT&CK catalog in the current modeled scope, including unmapped techniques."
+                      : "Showing all mapped Core and Extended techniques. Switch to Gaps view for weakness-first analysis."
+                    : showUnmappedTechniques
+                      ? "Showing Core techniques across the current ATT&CK catalog, including unmapped entries."
+                      : "Showing mapped Core techniques by default. Enable Extended for the full modeled set."
                 : visibleTechniques.length === 0
                   ? "No techniques match the current gap filters."
                   : `Showing ${visibleTechniques.length} techniques across: ${activeGapCategorySummary}.`}

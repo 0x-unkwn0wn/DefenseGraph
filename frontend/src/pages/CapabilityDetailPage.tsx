@@ -47,6 +47,7 @@ export function CapabilityDetailPage({ capabilityId }: CapabilityDetailPageProps
         actions={
           <>
             <span className="domain-pill">{detail.capability.domain}</span>
+            {detail.capability.family ? <span className="count-chip">{detail.capability.family}</span> : null}
             <a href="#/tools" className="back-link">
               Back to tools
             </a>

@@ -35,6 +35,7 @@ class Capability(Base):
     code: Mapped[str] = mapped_column(String(50), unique=True, nullable=False)
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     domain: Mapped[str] = mapped_column(String(100), nullable=False)
+    family: Mapped[str] = mapped_column(String(150), nullable=False, default="General")
     description: Mapped[str] = mapped_column(Text, nullable=False, default="")
     requires_data_sources: Mapped[bool] = mapped_column(default=False, nullable=False)
     supported_by_analytics: Mapped[bool] = mapped_column(default=False, nullable=False)

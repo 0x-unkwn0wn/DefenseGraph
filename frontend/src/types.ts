@@ -62,6 +62,7 @@ export interface Capability {
   code: string;
   name: string;
   domain: string;
+  family?: string;
   description: string;
   requires_data_sources: boolean;
   supported_by_analytics: boolean;

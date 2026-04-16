@@ -293,7 +293,7 @@ def build_executive_report_pdf(
         pdf.body_text(b)
         pdf.ln(2)
 
-    return pdf.output()
+    return bytes(pdf.output())
 
 
 # ── Technical report ──────────────────────────────────────────────────────────
@@ -355,7 +355,7 @@ def build_technical_report_pdf(
             (row.test_status,          24),
         ], even=idx % 2 == 0)
 
-    return pdf.output()
+    return bytes(pdf.output())
 
 
 # ── CSV gap export (unchanged) ────────────────────────────────────────────────

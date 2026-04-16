@@ -227,6 +227,12 @@ export function DocsPage() {
                           <strong>{item.capability.name}</strong>
                           <span className="count-chip">{item.implementing_tool_count} tools</span>
                         </summary>
+                        {item.capability.family ? (
+                          <div className="docs-chip-row">
+                            <span className="eyebrow">Family</span>
+                            <span className="count-chip">{item.capability.family}</span>
+                          </div>
+                        ) : null}
                         <p className="muted">{item.capability.description}</p>
                         <p>{item.purpose}</p>
                         <div className="docs-chip-row">
