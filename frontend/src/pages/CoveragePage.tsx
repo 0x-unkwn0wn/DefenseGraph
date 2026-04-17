@@ -194,6 +194,10 @@ export function CoveragePage({
   const uniqueCoverageTechniqueStates = showUnmappedTechniques
     ? uniqueTechniqueStates
     : uniqueMappedTechniqueStates;
+  const unmappedCount = useMemo(
+    () => uniqueTechniqueStates.filter((t) => t.has_capability_mappings === false).length,
+    [uniqueTechniqueStates],
+  );
   const toolOptions = buildToolOptions(tools);
   const scopeOptions = buildScopeOptions(coverage);
   const groupCounters = buildDisplayGroupCounters(uniqueCoverageTechniqueStates);
@@ -301,6 +305,17 @@ export function CoveragePage({
             ? "Coverage state by tactic, technique, and selected tool scope."
             : "Gap-focused ATT&CK view using the same matrix, detail panel, and filters as the main coverage workspace."}
         </p>
+        {activeView === "coverage" && unmappedCount > 0 ? (
+          <div className={`unmapped-banner ${showUnmappedTechniques ? "active" : ""}`}>
+            <span className="unmapped-banner-count">{unmappedCount}</span>
+            <span className="unmapped-banner-label">
+              ATT&amp;CK techniques have no capability mapping
+              {showUnmappedTechniques
+                ? " — shown with dashed border in the matrix below"
+                : " — hidden. Enable \"Show unmapped ATT&CK techniques\" to display them."}
+            </span>
+          </div>
+        ) : null}
 
         <div className="filter-group view-mode-group">
           <div className="filter-group-heading">

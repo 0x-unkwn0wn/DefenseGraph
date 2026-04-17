@@ -516,6 +516,31 @@ button {
   line-height: 1.45;
 }
 
+.unmapped-banner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+  padding: 8px 12px;
+  border-radius: 6px;
+  border: 1px dashed #4a5568;
+  background: #0f1a2e;
+  font-size: 0.8rem;
+  color: var(--text-soft);
+}
+.unmapped-banner.active {
+  border-color: #6366f1;
+  background: #0f1525;
+  color: #a5b4fc;
+}
+.unmapped-banner-count {
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: #6366f1;
+  min-width: 2.5rem;
+  text-align: right;
+}
+
 .compact-copy {
   font-size: 0.76rem;
 }
@@ -1116,7 +1141,9 @@ button {
 
 .matrix-cell.unmapped-model {
   border-style: dashed;
-  border-color: #586474;
+  border-color: #4a5568;
+  background: #0f1a2e;
+  opacity: 0.75;
 }
 
 .matrix-cell.subtechnique {
