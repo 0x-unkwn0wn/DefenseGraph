@@ -164,7 +164,7 @@ export function CoveragePage({
   const [selectedScope, setSelectedScope] = useState<string>("all");
   const [showOnlyCriticalGaps, setShowOnlyCriticalGaps] = useState(false);
   const [showExtendedTechniques, setShowExtendedTechniques] = useState(false);
-  const [showUnmappedTechniques, setShowUnmappedTechniques] = useState(false);
+  const [showUnmappedTechniques, setShowUnmappedTechniques] = useState(true);
   const [selectedDisplayGroup, setSelectedDisplayGroup] = useState<TechniqueDisplayGroup | "all">("all");
   const [selectedGapCategories, setSelectedGapCategories] = useState<GapCategoryKey[]>(allGapCategoryKeys);
   const [selectedTechniqueCode, setSelectedTechniqueCode] = useState<string | null>(null);
@@ -453,7 +453,7 @@ export function CoveragePage({
                     checked={showUnmappedTechniques}
                     onChange={(event) => setShowUnmappedTechniques(event.target.checked)}
                   />
-                  <span>Include unmapped ATT&CK</span>
+                  <span>Show unmapped ATT&amp;CK techniques</span>
                 </label>
               </>
             ) : (
