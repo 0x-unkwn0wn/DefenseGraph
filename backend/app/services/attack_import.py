@@ -1,6 +1,14 @@
 from __future__ import annotations
 
+import logging
 from collections.abc import Sequence
+
+logger = logging.getLogger(__name__)
+
+DEFAULT_ATTACK_URL = (
+    "https://raw.githubusercontent.com/mitre-attack/attack-stix-data/master/"
+    "enterprise-attack/enterprise-attack.json"
+)
 
 
 def build_attack_url(attack_id: str) -> str:
@@ -98,6 +106,54 @@ def iter_enterprise_attack_techniques_from_bundle(
         )
 
     return sorted(techniques, key=lambda technique: str(technique["code"]))
+
+
+def import_attack_techniques_into_session(
+    db: object,
+    *,
+    core_codes: Sequence[str] = (),
+    extended_codes: Sequence[str] = (),
+    bundle_url: str = DEFAULT_ATTACK_URL,
+) -> tuple[int, int]:
+    """Download the ATT&CK STIX bundle and upsert all enterprise techniques.
+
+    Uses the provided SQLAlchemy Session directly so it fits into an existing
+    transaction/startup flow.  Returns (created, updated) counts.
+    Raises on network or HTTP errors — callers should catch if non-fatal.
+    """
+    import httpx  # deferred — only needed at import time, not module load
+    from sqlalchemy import select
+    from app.models import Technique
+
+    response = httpx.get(bundle_url, timeout=90.0, follow_redirects=True)
+    response.raise_for_status()
+    bundle = response.json()
+    rows = iter_enterprise_attack_techniques_from_bundle(
+        bundle,
+        core_codes=core_codes,
+        extended_codes=extended_codes,
+    )
+
+    existing_by_code: dict[str, object] = {
+        row.code: row
+        for row in db.scalars(select(Technique)).all()  # type: ignore[union-attr]
+    }
+    created = 0
+    updated = 0
+    for payload in rows:
+        code = str(payload["code"])
+        existing = existing_by_code.get(code)
+        if existing is None:
+            db.add(Technique(**payload))  # type: ignore[union-attr]
+            created += 1
+        else:
+            for field, value in payload.items():
+                setattr(existing, field, value)
+            updated += 1
+
+    db.commit()  # type: ignore[union-attr]
+    logger.info("ATT&CK import complete: %d created, %d updated", created, updated)
+    return created, updated
 
 
 def build_local_attack_technique(

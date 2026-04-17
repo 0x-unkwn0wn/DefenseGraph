@@ -99,7 +99,8 @@ from app.schemas import (
     TechniqueTestResultUpdate,
     VendorRead,
 )
-from app.seed import seed_reference_data, sync_reference_data
+from app.seed import seed_reference_data, sync_reference_data, TECHNIQUE_CODE_SET, CORE_TECHNIQUE_CODES, EXTENDED_TECHNIQUE_CODES
+from app.services.attack_import import import_attack_techniques_into_session
 from app.services.configuration import (
     calculate_configuration_status,
     ensure_configuration_profile,
@@ -141,12 +142,30 @@ def get_db():
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
+    import logging
+    from sqlalchemy import func, select as _select
+
     migrate_legacy_database(BASE_DIR / "defensegraph.db")
     Base.metadata.create_all(bind=engine)
     db = SessionLocal()
     try:
         sync_reference_data(db)
         seed_reference_data(db)
+        # Auto-import full ATT&CK catalogue if only the 35 core techniques are
+        # present (e.g. fresh DB or after a schema migration that wiped data).
+        technique_count = db.scalar(_select(func.count()).select_from(Technique))
+        if technique_count is not None and technique_count <= len(TECHNIQUE_CODE_SET):
+            try:
+                import_attack_techniques_into_session(
+                    db,
+                    core_codes=CORE_TECHNIQUE_CODES,
+                    extended_codes=EXTENDED_TECHNIQUE_CODES,
+                )
+            except Exception as exc:  # noqa: BLE001
+                logging.getLogger(__name__).warning(
+                    "ATT&CK auto-import on startup failed (run scripts/import_attack_enterprise.py manually): %s",
+                    exc,
+                )
     finally:
         db.close()
     yield

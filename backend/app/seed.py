@@ -2337,7 +2337,7 @@ def sync_reference_data(db: Session) -> None:
 
     if (
         capability_codes == CAPABILITY_CODE_SET
-        and technique_codes == TECHNIQUE_CODE_SET
+        and TECHNIQUE_CODE_SET.issubset(technique_codes)
         and data_source_codes == DATA_SOURCE_CODE_SET
         and response_action_codes == RESPONSE_ACTION_CODE_SET
         and coverage_scope_codes == COVERAGE_SCOPE_CODE_SET

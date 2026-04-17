@@ -29,7 +29,8 @@ from app.models import (
     ToolResponseAction,
     Vendor,
 )
-from app.seed import seed_reference_data, LEGACY_CAPABILITY_MAP
+from app.seed import seed_reference_data, LEGACY_CAPABILITY_MAP, CORE_TECHNIQUE_CODES, EXTENDED_TECHNIQUE_CODES
+from app.services.attack_import import import_attack_techniques_into_session
 from app.tool_categories import normalize_tool_category
 from app.tool_types import normalize_tool_types
 
@@ -63,6 +64,19 @@ def migrate_legacy_database(database_path: Path) -> Path | None:
         seed_reference_data(db)
         _restore_payload(db, legacy_payload)
         db.commit()
+        # Re-import full ATT&CK Enterprise catalogue wiped by drop_all
+        try:
+            import_attack_techniques_into_session(
+                db,
+                core_codes=CORE_TECHNIQUE_CODES,
+                extended_codes=EXTENDED_TECHNIQUE_CODES,
+            )
+        except Exception as exc:  # noqa: BLE001
+            import logging
+            logging.getLogger(__name__).warning(
+                "ATT&CK auto-import after migration failed (run scripts/import_attack_enterprise.py manually): %s",
+                exc,
+            )
     finally:
         db.close()
         engine.dispose()
