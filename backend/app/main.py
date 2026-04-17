@@ -99,7 +99,7 @@ from app.schemas import (
     TechniqueTestResultUpdate,
     VendorRead,
 )
-from app.seed import seed_reference_data, sync_reference_data, TECHNIQUE_CODE_SET, CORE_TECHNIQUE_CODES, EXTENDED_TECHNIQUE_CODES
+from app.seed import seed_reference_data, sync_reference_data, sync_tactic_capability_maps, TECHNIQUE_CODE_SET, CORE_TECHNIQUE_CODES, EXTENDED_TECHNIQUE_CODES
 from app.services.attack_import import import_attack_techniques_into_session
 from app.services.configuration import (
     calculate_configuration_status,
@@ -166,6 +166,8 @@ async def lifespan(_: FastAPI):
                     "ATT&CK auto-import on startup failed (run scripts/import_attack_enterprise.py manually): %s",
                     exc,
                 )
+        # Map any still-unmapped techniques to their tactic-level capabilities.
+        sync_tactic_capability_maps(db)
     finally:
         db.close()
     yield

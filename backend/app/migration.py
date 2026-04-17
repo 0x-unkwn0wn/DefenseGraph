@@ -29,7 +29,7 @@ from app.models import (
     ToolResponseAction,
     Vendor,
 )
-from app.seed import seed_reference_data, LEGACY_CAPABILITY_MAP, CORE_TECHNIQUE_CODES, EXTENDED_TECHNIQUE_CODES
+from app.seed import seed_reference_data, sync_tactic_capability_maps, LEGACY_CAPABILITY_MAP, CORE_TECHNIQUE_CODES, EXTENDED_TECHNIQUE_CODES
 from app.services.attack_import import import_attack_techniques_into_session
 from app.tool_categories import normalize_tool_category
 from app.tool_types import normalize_tool_types
@@ -77,6 +77,8 @@ def migrate_legacy_database(database_path: Path) -> Path | None:
                 "ATT&CK auto-import after migration failed (run scripts/import_attack_enterprise.py manually): %s",
                 exc,
             )
+        else:
+            sync_tactic_capability_maps(db)
     finally:
         db.close()
         engine.dispose()

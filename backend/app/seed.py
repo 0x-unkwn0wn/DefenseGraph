@@ -686,6 +686,97 @@ CAPABILITIES = [
         "requires_data_sources": True,
         "supported_by_analytics": True,
     },
+    # ── Tactic-level coverage capabilities (CAP-T01 … CAP-T14) ──────────────
+    # These provide a baseline grouping for every ATT&CK Enterprise technique
+    # that is not yet assigned to a specific capability. One per tactic.
+    {
+        "code": "CAP-T01",
+        "name": "Reconnaissance Coverage",
+        "domain": "exposure",
+        "description": "Baseline coverage for ATT&CK Reconnaissance techniques. Encompasses active/passive scanning, phishing for information, and pre-attack intelligence gathering against the organisation's external attack surface.",
+        "requires_data_sources": True,
+        "supported_by_analytics": True,
+    },
+    {
+        "code": "CAP-T02",
+        "name": "Resource Development Coverage",
+        "domain": "exposure",
+        "description": "Baseline coverage for ATT&CK Resource Development techniques. Addresses adversary acquisition of infrastructure, accounts, capabilities, and staging resources prior to intrusion.",
+        "requires_data_sources": True,
+        "supported_by_analytics": True,
+    },
+    {
+        "code": "CAP-T03",
+        "name": "Initial Access Coverage",
+        "domain": "network",
+        "description": "Baseline coverage for ATT&CK Initial Access techniques. Addresses entry vectors including phishing, supply-chain compromise, valid account abuse, and exploitation of public-facing applications.",
+    },
+    {
+        "code": "CAP-T04",
+        "name": "Execution Coverage",
+        "domain": "endpoint",
+        "description": "Baseline coverage for ATT&CK Execution techniques. Addresses adversary attempts to run malicious code via native interpreters, scheduled tasks, user interaction, and other execution primitives.",
+    },
+    {
+        "code": "CAP-T05",
+        "name": "Persistence Coverage",
+        "domain": "endpoint",
+        "description": "Baseline coverage for ATT&CK Persistence techniques. Addresses mechanisms used to maintain access across reboots, credential changes, and other interruptions.",
+    },
+    {
+        "code": "CAP-T06",
+        "name": "Privilege Escalation Coverage",
+        "domain": "endpoint",
+        "description": "Baseline coverage for ATT&CK Privilege Escalation techniques. Addresses exploitation of misconfigurations, vulnerabilities, and design weaknesses to gain higher-level permissions.",
+    },
+    {
+        "code": "CAP-T07",
+        "name": "Defense Evasion Coverage",
+        "domain": "endpoint",
+        "description": "Baseline coverage for ATT&CK Defense Evasion techniques. Addresses attempts to avoid detection by disabling security tools, obfuscating code, abusing trusted processes, and masquerading activity.",
+    },
+    {
+        "code": "CAP-T08",
+        "name": "Credential Access Coverage",
+        "domain": "identity",
+        "description": "Baseline coverage for ATT&CK Credential Access techniques. Addresses credential theft, dumping, and abuse including password spraying, keylogging, and secrets extraction.",
+    },
+    {
+        "code": "CAP-T09",
+        "name": "Discovery Coverage",
+        "domain": "endpoint",
+        "description": "Baseline coverage for ATT&CK Discovery techniques. Addresses adversary enumeration of systems, networks, accounts, and software to understand the environment.",
+    },
+    {
+        "code": "CAP-T10",
+        "name": "Lateral Movement Coverage",
+        "domain": "network",
+        "description": "Baseline coverage for ATT&CK Lateral Movement techniques. Addresses adversary movement between systems using remote services, pass-the-hash, and internal spearphishing.",
+    },
+    {
+        "code": "CAP-T11",
+        "name": "Collection Coverage",
+        "domain": "data",
+        "description": "Baseline coverage for ATT&CK Collection techniques. Addresses adversary gathering of data of interest including screen capture, keylogging, clipboard access, and staged data collection.",
+    },
+    {
+        "code": "CAP-T12",
+        "name": "Command and Control Coverage",
+        "domain": "network",
+        "description": "Baseline coverage for ATT&CK Command & Control techniques. Addresses adversary communication with compromised systems via covert channels, proxies, and protocol abuse.",
+    },
+    {
+        "code": "CAP-T13",
+        "name": "Exfiltration Coverage",
+        "domain": "data",
+        "description": "Baseline coverage for ATT&CK Exfiltration techniques. Addresses data theft over command-and-control channels, alternative protocols, scheduled transfers, and cloud storage services.",
+    },
+    {
+        "code": "CAP-T14",
+        "name": "Impact Coverage",
+        "domain": "endpoint",
+        "description": "Baseline coverage for ATT&CK Impact techniques. Addresses adversary manipulation, interruption, or destruction of systems and data including ransomware, defacement, and denial-of-service.",
+    },
 ]
 
 CAPABILITY_FAMILIES_BY_CODE = {
@@ -780,6 +871,39 @@ CAPABILITY_FAMILIES_BY_CODE = {
     "CAP-157": "Application & API Component Abuse",
     "CAP-158": "Pre-Attack Recon & Resource Development",
     "CAP-159": "Pre-Attack Recon & Resource Development",
+    # Tactic-level baseline capabilities
+    "CAP-T01": "ATT&CK Tactic Coverage",
+    "CAP-T02": "ATT&CK Tactic Coverage",
+    "CAP-T03": "ATT&CK Tactic Coverage",
+    "CAP-T04": "ATT&CK Tactic Coverage",
+    "CAP-T05": "ATT&CK Tactic Coverage",
+    "CAP-T06": "ATT&CK Tactic Coverage",
+    "CAP-T07": "ATT&CK Tactic Coverage",
+    "CAP-T08": "ATT&CK Tactic Coverage",
+    "CAP-T09": "ATT&CK Tactic Coverage",
+    "CAP-T10": "ATT&CK Tactic Coverage",
+    "CAP-T11": "ATT&CK Tactic Coverage",
+    "CAP-T12": "ATT&CK Tactic Coverage",
+    "CAP-T13": "ATT&CK Tactic Coverage",
+    "CAP-T14": "ATT&CK Tactic Coverage",
+}
+
+# Maps ATT&CK tactic name (as stored in Technique.tactics) to a tactic capability code.
+TACTIC_TO_CAPABILITY_CODE: dict[str, str] = {
+    "Reconnaissance": "CAP-T01",
+    "Resource Development": "CAP-T02",
+    "Initial Access": "CAP-T03",
+    "Execution": "CAP-T04",
+    "Persistence": "CAP-T05",
+    "Privilege Escalation": "CAP-T06",
+    "Defense Evasion": "CAP-T07",
+    "Credential Access": "CAP-T08",
+    "Discovery": "CAP-T09",
+    "Lateral Movement": "CAP-T10",
+    "Collection": "CAP-T11",
+    "Command & Control": "CAP-T12",
+    "Exfiltration": "CAP-T13",
+    "Impact": "CAP-T14",
 }
 
 CAPABILITY_DEFAULT_ROLES_BY_FAMILY = {
@@ -2326,6 +2450,67 @@ def _apply_named_capability_mapping_patches(db: Session) -> None:
             print(line)
 
 
+def sync_tactic_capability_maps(db: Session) -> int:
+    """Create CapabilityTechniqueMap rows for every technique that has no
+    existing mapping, linking it to the tactic-level capability for each of
+    its tactics.  Already-mapped techniques are left untouched.
+
+    Returns the number of new mapping rows inserted.
+    """
+    tactic_cap_ids: dict[str, int] = {
+        cap.code: cap.id
+        for cap in db.scalars(
+            select(Capability).where(Capability.code.in_(TACTIC_TO_CAPABILITY_CODE.values()))
+        ).all()
+    }
+    if not tactic_cap_ids:
+        return 0
+
+    # Technique IDs that already have at least one capability mapping
+    mapped_technique_ids: set[int] = {
+        row for (row,) in db.execute(select(CapabilityTechniqueMap.technique_id).distinct()).all()
+    }
+
+    # Existing tactic-capability maps (avoid duplicate inserts on re-runs)
+    existing_keys: set[tuple[int, int, str]] = {
+        (row.capability_id, row.technique_id, row.control_effect)
+        for row in db.scalars(
+            select(CapabilityTechniqueMap).where(
+                CapabilityTechniqueMap.capability_id.in_(tactic_cap_ids.values())
+            )
+        ).all()
+    }
+
+    added = 0
+    for technique in db.scalars(select(Technique)).all():
+        if technique.id in mapped_technique_ids:
+            continue
+        for tactic in technique.tactics or []:
+            cap_code = TACTIC_TO_CAPABILITY_CODE.get(tactic)
+            if cap_code is None:
+                continue
+            cap_id = tactic_cap_ids.get(cap_code)
+            if cap_id is None:
+                continue
+            key = (cap_id, technique.id, "detect")
+            if key in existing_keys:
+                continue
+            db.add(
+                CapabilityTechniqueMap(
+                    capability_id=cap_id,
+                    technique_id=technique.id,
+                    control_effect="detect",
+                    coverage="partial",
+                )
+            )
+            existing_keys.add(key)
+            added += 1
+
+    if added:
+        db.commit()
+    return added
+
+
 def sync_reference_data(db: Session) -> None:
     capability_codes = {code for (code,) in db.execute(select(Capability.code)).all()}
     technique_codes = {code for (code,) in db.execute(select(Technique.code)).all()}
@@ -2395,6 +2580,7 @@ def seed_reference_data(db: Session) -> None:
     _seed_configuration_questions(db)
     _seed_tool_capability_templates(db)
     _normalize_known_tools(db)
+    sync_tactic_capability_maps(db)
 
 
 def _seed_capability_technique_maps(db: Session) -> None:
