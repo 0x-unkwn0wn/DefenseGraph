@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { tacticOrder } from "../attackConfig";
 import type { DerivedTechnique } from "../types";
 
@@ -16,6 +17,20 @@ export function AttackMatrix({
   techniques,
   onSelect,
 }: AttackMatrixProps) {
+  const [expandedParents, setExpandedParents] = useState<Set<string>>(new Set());
+
+  const toggleExpand = (code: string) => {
+    setExpandedParents((prev) => {
+      const next = new Set(prev);
+      if (next.has(code)) {
+        next.delete(code);
+      } else {
+        next.add(code);
+      }
+      return next;
+    });
+  };
+
   const tacticSet = new Set(techniques.map((technique) => technique.tactic));
   const orderedTactics = tacticOrder.filter((tactic) => tacticSet.has(tactic));
   const extraTactics = Array.from(tacticSet).filter((tactic) => !tacticOrder.includes(tactic)).sort();
@@ -72,6 +87,7 @@ export function AttackMatrix({
                 ) : (
                   standaloneTechniques.map((technique) => {
                     const children = childTechniquesByParent.get(technique.technique_code) ?? [];
+                    const isExpanded = expandedParents.has(technique.technique_code);
 
                     return (
                       <div key={`${technique.technique_code}:${tactic}`} className="matrix-technique-group">
@@ -79,8 +95,18 @@ export function AttackMatrix({
                           technique={technique}
                           isActive={selectedTechniqueCode === technique.technique_code}
                           onSelect={onSelect}
+                          subtechniqueCount={children.length > 0 ? children.length : undefined}
+                          isExpanded={children.length > 0 ? isExpanded : undefined}
+                          onToggleExpand={
+                            children.length > 0
+                              ? (e) => {
+                                  e.stopPropagation();
+                                  toggleExpand(technique.technique_code);
+                                }
+                              : undefined
+                          }
                         />
-                        {children.length > 0 ? (
+                        {children.length > 0 && isExpanded ? (
                           <div className="matrix-subtechniques">
                             {children.map((child) => (
                               <TechniqueCell

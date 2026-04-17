@@ -4,10 +4,21 @@ interface TechniqueCellProps {
   technique: DerivedTechnique;
   isActive: boolean;
   isSubtechnique?: boolean;
+  subtechniqueCount?: number;
+  isExpanded?: boolean;
+  onToggleExpand?: (e: React.MouseEvent<HTMLButtonElement>) => void;
   onSelect: (technique: DerivedTechnique) => void;
 }
 
-export function TechniqueCell({ technique, isActive, isSubtechnique = false, onSelect }: TechniqueCellProps) {
+export function TechniqueCell({
+  technique,
+  isActive,
+  isSubtechnique = false,
+  subtechniqueCount,
+  isExpanded,
+  onToggleExpand,
+  onSelect,
+}: TechniqueCellProps) {
   const isUnmapped = technique.has_capability_mappings === false;
   const testStatus = technique.test_status ?? "not_tested";
   const gapClass =
@@ -31,6 +42,7 @@ export function TechniqueCell({ technique, isActive, isSubtechnique = false, onS
         technique.is_gap_partially_configured_control ? "partially-configured-control" : "",
         isUnmapped ? "unmapped-model" : "",
         isSubtechnique ? "subtechnique" : "",
+        onToggleExpand !== undefined ? "has-subtechniques" : "",
         gapClass,
         isActive ? "active" : "",
       ]
@@ -47,6 +59,20 @@ export function TechniqueCell({ technique, isActive, isSubtechnique = false, onS
       <span className="matrix-cell-meta">
         {isSubtechnique ? "sub-technique" : `${technique.tool_count} ${technique.tool_count === 1 ? "tool" : "tools"}`}
       </span>
+      {onToggleExpand !== undefined ? (
+        <button
+          type="button"
+          className={`subtechnique-toggle${isExpanded ? " expanded" : ""}`}
+          onClick={onToggleExpand}
+          aria-label={isExpanded ? "Collapse sub-techniques" : `Expand ${subtechniqueCount} sub-techniques`}
+          title={isExpanded ? "Collapse sub-techniques" : `${subtechniqueCount} sub-technique${subtechniqueCount === 1 ? "" : "s"} — click to expand`}
+        >
+          <span className="subtechnique-toggle-count">{subtechniqueCount}</span>
+          <svg className="subtechnique-toggle-chevron" width="10" height="10" viewBox="0 0 10 10" aria-hidden="true">
+            <polyline points="2,3 5,7 8,3" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+        </button>
+      ) : null}
       <span className="matrix-cell-flags">
         {isUnmapped ? <span className="cell-flag">unmapped</span> : null}
         {technique.is_gap_partial ? <span className="cell-flag">partial</span> : null}
