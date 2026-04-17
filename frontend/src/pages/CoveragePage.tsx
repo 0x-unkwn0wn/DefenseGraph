@@ -164,7 +164,6 @@ export function CoveragePage({
   const [selectedScope, setSelectedScope] = useState<string>("all");
   const [showOnlyCriticalGaps, setShowOnlyCriticalGaps] = useState(false);
   const [showExtendedTechniques, setShowExtendedTechniques] = useState(false);
-  const [showUnmappedTechniques, setShowUnmappedTechniques] = useState(true);
   const [selectedDisplayGroup, setSelectedDisplayGroup] = useState<TechniqueDisplayGroup | "all">("all");
   const [selectedGapCategories, setSelectedGapCategories] = useState<GapCategoryKey[]>(allGapCategoryKeys);
   const [selectedTechniqueCode, setSelectedTechniqueCode] = useState<string | null>(null);
@@ -190,10 +189,8 @@ export function CoveragePage({
     () => Array.from(new Map(mappedTechniqueStates.map((technique) => [technique.technique_code, technique])).values()),
     [mappedTechniqueStates],
   );
-  const coverageTechniqueStates = showUnmappedTechniques ? techniqueStates : mappedTechniqueStates;
-  const uniqueCoverageTechniqueStates = showUnmappedTechniques
-    ? uniqueTechniqueStates
-    : uniqueMappedTechniqueStates;
+  const coverageTechniqueStates = mappedTechniqueStates;
+  const uniqueCoverageTechniqueStates = uniqueMappedTechniqueStates;
   const unmappedCount = useMemo(
     () => uniqueTechniqueStates.filter((t) => t.has_capability_mappings === false).length,
     [uniqueTechniqueStates],
@@ -206,10 +203,7 @@ export function CoveragePage({
     activeView === "coverage"
       ? filterTechniqueStates(
           coverageTechniqueStates.filter(
-            (technique) =>
-              showExtendedTechniques ||
-              technique.display_group === "core" ||
-              !technique.has_capability_mappings,
+            (technique) => showExtendedTechniques || technique.display_group === "core",
           ),
           selectedCoverage,
           showOnlyCriticalGaps,
@@ -241,8 +235,7 @@ export function CoveragePage({
 
   const coverageCounters = buildCounters(
     uniqueCoverageTechniqueStates.filter(
-      (technique) =>
-        showExtendedTechniques || technique.display_group === "core" || !technique.has_capability_mappings,
+      (technique) => showExtendedTechniques || technique.display_group === "core",
     ),
   );
   const gapCategoryCounts = useMemo(
@@ -306,13 +299,10 @@ export function CoveragePage({
             : "Gap-focused ATT&CK view using the same matrix, detail panel, and filters as the main coverage workspace."}
         </p>
         {activeView === "coverage" && unmappedCount > 0 ? (
-          <div className={`unmapped-banner ${showUnmappedTechniques ? "active" : ""}`}>
+          <div className="unmapped-banner">
             <span className="unmapped-banner-count">{unmappedCount}</span>
             <span className="unmapped-banner-label">
-              ATT&amp;CK techniques have no capability mapping
-              {showUnmappedTechniques
-                ? " — shown with dashed border in the matrix below"
-                : " — hidden. Enable \"Show unmapped ATT&CK techniques\" to display them."}
+              ATT&amp;CK techniques have no capability mapping and are excluded from this workspace.
             </span>
           </div>
         ) : null}
@@ -338,15 +328,7 @@ export function CoveragePage({
         {activeView === "coverage" ? (
           <div className="counter-grid">
             <div className="counter-card">
-              <span>
-                {showExtendedTechniques
-                  ? showUnmappedTechniques
-                    ? "Visible techniques"
-                    : "Mapped techniques"
-                  : showUnmappedTechniques
-                    ? "Core techniques"
-                    : "Mapped core techniques"}
-              </span>
+              <span>{showExtendedTechniques ? "Mapped techniques" : "Mapped core techniques"}</span>
               <strong>{coverageCounters.total}</strong>
             </div>
             <div className="counter-card">
@@ -461,15 +443,6 @@ export function CoveragePage({
                   />
                   <span>Show extended techniques</span>
                 </label>
-
-                <label className="filter-toggle">
-                  <input
-                    type="checkbox"
-                    checked={showUnmappedTechniques}
-                    onChange={(event) => setShowUnmappedTechniques(event.target.checked)}
-                  />
-                  <span>Show unmapped ATT&amp;CK techniques</span>
-                </label>
               </>
             ) : (
               <div className="filter-group compact-filter-group">
@@ -538,10 +511,6 @@ export function CoveragePage({
             <div className="legend-item">
               <span className="legend-swatch none" />
               <span>No coverage</span>
-            </div>
-            <div className="legend-item">
-              <span className="legend-flag">UM</span>
-              <span>Unmapped technique</span>
             </div>
             <div className="legend-item">
               <span className="legend-swatch detect" />
@@ -614,12 +583,8 @@ export function CoveragePage({
                 ? showOnlyCriticalGaps
                   ? "Showing only techniques with no effective coverage. Detect-only and partial techniques are hidden in this mode."
                   : showExtendedTechniques
-                    ? showUnmappedTechniques
-                      ? "Showing the full ATT&CK catalog in the current modeled scope, including unmapped techniques."
-                      : "Showing all mapped Core and Extended techniques. Switch to Gaps view for weakness-first analysis."
-                    : showUnmappedTechniques
-                      ? "Showing Core techniques across the current ATT&CK catalog, including unmapped entries."
-                      : "Showing mapped Core techniques by default. Enable Extended for the full modeled set."
+                    ? "Showing all mapped Core and Extended techniques. Switch to Gaps view for weakness-first analysis."
+                    : "Showing mapped Core techniques by default. Enable Extended for the full modeled set."
                 : visibleTechniques.length === 0
                   ? "No techniques match the current gap filters."
                   : `Showing ${visibleTechniques.length} techniques across: ${activeGapCategorySummary}.`}

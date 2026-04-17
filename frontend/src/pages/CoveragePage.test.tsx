@@ -94,7 +94,7 @@ describe("CoveragePage", () => {
     expect(screen.getAllByText(/extended/i).length).toBeGreaterThan(0);
   });
 
-  it("treats unmapped techniques as out of model instead of critical gaps", async () => {
+  it("keeps unmapped techniques out of the coverage and gaps workspace", async () => {
     const user = userEvent.setup();
 
     render(
@@ -185,13 +185,8 @@ describe("CoveragePage", () => {
 
     await user.click(screen.getByRole("button", { name: "coverage" }));
     expect(screen.queryByText("Unmapped Technique")).not.toBeInTheDocument();
-    await user.click(screen.getByLabelText(/show extended techniques/i));
-    await user.click(screen.getByLabelText(/include unmapped att&ck/i));
-    await user.click(screen.getByRole("button", { name: /T9000/i }));
-
-    expect(screen.getByText("Unmapped")).toBeInTheDocument();
     expect(
-      screen.getByText(/excluded from gap counts until the model is extended/i),
+      screen.getByText(/have no capability mapping and are excluded from this workspace/i),
     ).toBeInTheDocument();
   });
 
