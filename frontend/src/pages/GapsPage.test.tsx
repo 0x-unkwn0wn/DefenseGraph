@@ -313,11 +313,12 @@ describe("GapsPage", () => {
       />,
     );
 
-    expect(screen.getByText(/Exploit Public-Facing Application/i)).toBeInTheDocument();
-
-    await user.click(screen.getByRole("button", { name: "core" }));
-
+    expect(screen.getByText(/^DNS$/i)).toBeInTheDocument();
     expect(screen.queryByText(/Exploit Public-Facing Application/i)).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "all" }));
+
+    expect(screen.getByText(/Exploit Public-Facing Application/i)).toBeInTheDocument();
     expect(screen.getByText(/^DNS$/i)).toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "extended" }));
@@ -455,6 +456,11 @@ describe("GapsPage", () => {
         ]}
       />,
     );
+
+    expect(screen.getByText(/^DNS$/i)).toBeInTheDocument();
+    expect(screen.queryByText(/Exploit Public-Facing Application/i)).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "all" }));
 
     expect(screen.getByText(/^DNS$/i)).toBeInTheDocument();
     expect(screen.getByText(/Exploit Public-Facing Application/i)).toBeInTheDocument();

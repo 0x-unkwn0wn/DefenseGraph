@@ -316,6 +316,62 @@ describe("CoveragePage", () => {
     expect(screen.getAllByText(/response/i).length).toBeGreaterThan(0);
   });
 
+  it("counts gap techniques uniquely even when one technique belongs to multiple tactics", async () => {
+    const user = userEvent.setup();
+
+    render(
+      <CoveragePage
+        capabilities={[]}
+        coverage={[
+          {
+            technique_id: 1,
+            technique_code: "T1078",
+            technique_name: "Valid Accounts",
+            tactics: ["Initial Access", "Defense Evasion"],
+            primary_tactic: "Initial Access",
+            has_capability_mappings: true,
+            mapped_capability_count: 1,
+            coverage_type: "none",
+            effective_control_effect: "none",
+            effective_outcome: "none",
+            tool_count: 0,
+            confidence_level: "low",
+            coverage_status: "no_coverage",
+            response_enabled: false,
+            response_actions: [],
+            dependency_flags: [],
+            contributing_tools: [],
+            relevant_scopes: [],
+            scope_summary: { full_scopes: [], partial_scopes: [], missing_scopes: [] },
+            is_gap_no_coverage: true,
+            is_gap_detect_only: false,
+            is_gap_partial: false,
+            is_gap_low_confidence: false,
+            is_gap_single_tool_dependency: false,
+            is_gap_missing_data_sources: false,
+            is_gap_detection_without_response: false,
+            is_gap_response_without_detection: false,
+            is_gap_unconfigured_control: false,
+            is_gap_partially_configured_control: false,
+            is_gap_scope_missing: false,
+            is_gap_scope_partial: false,
+            attack_url: "https://attack.mitre.org/techniques/T1078/",
+            bas_validations: [],
+            bas_validated: false,
+            bas_result: null,
+            last_bas_validation_date: null,
+          },
+        ]}
+        tools={[]}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "gaps" }));
+
+    expect(screen.getByText("Visible gap techniques")).toBeInTheDocument();
+    expect(screen.getByText(/Showing 1 techniques across/i)).toBeInTheDocument();
+  });
+
   it("filters the matrix when show only critical gaps is enabled", async () => {
     const user = userEvent.setup();
 
