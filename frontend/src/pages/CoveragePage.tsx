@@ -355,15 +355,15 @@ export function CoveragePage({
               <strong>{coverageCounters.total}</strong>
             </div>
             <div className="counter-card">
-              <span>Covered</span>
+              <span>Covered techniques</span>
               <strong>{coverageCounters.covered}</strong>
             </div>
             <div className="counter-card">
-              <span>Gaps</span>
+              <span>Techniques with gaps</span>
               <strong>{coverageCounters.gaps}</strong>
             </div>
             <div className="counter-card">
-              <span>Detect only</span>
+              <span>Detect-only techniques</span>
               <strong>{coverageCounters.detectOnly}</strong>
             </div>
           </div>
@@ -374,15 +374,15 @@ export function CoveragePage({
               <strong>{gapCounters.total}</strong>
             </div>
             <div className="counter-card">
-              <span>Covered</span>
+              <span>Covered techniques</span>
               <strong>{gapCounters.covered}</strong>
             </div>
             <div className="counter-card">
-              <span>Gaps</span>
+              <span>Techniques with gaps</span>
               <strong>{gapCounters.gaps}</strong>
             </div>
             <div className="counter-card">
-              <span>Critical gaps</span>
+              <span>Critical gap techniques</span>
               <strong>{gapCategoryCounts.critical}</strong>
             </div>
           </div>
@@ -610,7 +610,7 @@ export function CoveragePage({
                     : "Showing mapped Core techniques by default. Enable Extended for the full modeled set."
                 : uniqueVisibleGapTechniques.length === 0
                   ? "No techniques match the current gap filters."
-                  : `Showing ${uniqueVisibleGapTechniques.length} techniques across: ${activeGapCategorySummary}.`}
+                  : `Showing ${uniqueVisibleGapTechniques.length} filtered gap techniques out of ${gapCounters.gaps} techniques with gaps across: ${activeGapCategorySummary}.`}
           </p>
         </div>
 
