@@ -368,7 +368,8 @@ describe("CoveragePage", () => {
 
     await user.click(screen.getByRole("button", { name: "gaps" }));
 
-    expect(screen.getByText("Visible gap techniques")).toBeInTheDocument();
+    expect(screen.getByText("Mapped core techniques")).toBeInTheDocument();
+    expect(screen.getByText("Gaps")).toBeInTheDocument();
     expect(screen.getByText(/Showing 1 techniques across/i)).toBeInTheDocument();
   });
 

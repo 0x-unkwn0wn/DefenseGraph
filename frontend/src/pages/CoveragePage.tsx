@@ -254,6 +254,7 @@ export function CoveragePage({
       (technique) => showExtendedTechniques || technique.display_group === "core",
     ),
   );
+  const gapCounters = buildCounters(uniqueGapTechniqueStates);
   const gapCategoryCounts = useMemo(
     () =>
       Object.fromEntries(
@@ -370,19 +371,19 @@ export function CoveragePage({
           <div className="counter-grid">
             <div className="counter-card">
               <span>{gapCatalogLabel}</span>
-              <strong>{uniqueGapTechniqueStates.length}</strong>
+              <strong>{gapCounters.total}</strong>
             </div>
             <div className="counter-card">
-              <span>Visible gap techniques</span>
-              <strong>{uniqueVisibleGapTechniques.length}</strong>
+              <span>Covered</span>
+              <strong>{gapCounters.covered}</strong>
+            </div>
+            <div className="counter-card">
+              <span>Gaps</span>
+              <strong>{gapCounters.gaps}</strong>
             </div>
             <div className="counter-card">
               <span>Critical gaps</span>
               <strong>{gapCategoryCounts.critical}</strong>
-            </div>
-            <div className="counter-card">
-              <span>Scope-related gaps</span>
-              <strong>{gapCategoryCounts.scope_missing + gapCategoryCounts.scope_partial}</strong>
             </div>
           </div>
         )}
